@@ -11,7 +11,7 @@ SECRET_KEY = 'django-insecure-%9+kxxzyf*kph!g%r4hbh-gje0y6*-6kt(2xq@vus5d*@y5c8u
 
 DEBUG = True
 
-ALLOWED_HOSTS = [".onrender.com", "https://aqar-014n.onrender.com", "localhost", "127.0.0.1"]
+ALLOWED_HOSTS = [".onrender.com", "https://naac-navigator.onrender.com", "localhost", "127.0.0.1"]
 
 INSTALLED_APPS = [
     'django.contrib.admin',

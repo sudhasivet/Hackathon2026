@@ -343,15 +343,7 @@ export default function TableForm({ metric, response, onChange, onSave, color, r
       )}
 
       {/* File upload */}
-      {!readOnly && (
-        <FileUpload
-          documents={response.documents || []}
-          onUpload={file => uploadFile(metric.id, file)}
-          onRemove={(docId, isServerDoc) => removeDocument(metric.id, docId, isServerDoc)}
-          accentColor={color}
-        />
-      )}
-
+     
       {/* Save button */}
       {!readOnly && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

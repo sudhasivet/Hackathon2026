@@ -51,3 +51,4 @@ export const adminSaveMetric    = (deptId, metricId, rows) =>
   api.post(`/form/admin/responses/${deptId}/${slug(metricId)}/`, { rows }).then(r => r.data)
 export const adminUnlockDept    = (deptId)     => api.post(`/form/admin/unlock/${deptId}/`).then(r => r.data)
 export const fetchAllSubmissions = ()          => api.get('/form/submission-status/').then(r => r.data)
+export default api

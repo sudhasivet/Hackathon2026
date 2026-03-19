@@ -316,7 +316,7 @@ class SubmitView(APIView):
         })
 class ReportDownloadView(APIView):
     """Download the generated PDF or Excel report for a department."""
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
 
     def get(self, request, dept_id, fmt):
         import os

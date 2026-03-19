@@ -311,7 +311,7 @@ class SubmitView(APIView):
         return Response({
             'message': 'Data submitted successfully',
             'submitted_at': status_obj.submitted_at,
-            'report_excel': f"/form/report/{dept.id}/excel/",
+            'report_excel': f"/form/report/{dept.id}/xlsl/",
             'report_pdf':   f"/form/report/{dept.id}/pdf/",
         })
 class ReportDownloadView(APIView):

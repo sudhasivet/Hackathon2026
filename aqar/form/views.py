@@ -1,3 +1,7 @@
+from django.http import HttpResponse, FileResponse
+from .report_generator import generate_excel, generate_pdf
+import os, uuid
+from django.conf import settings
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
@@ -185,10 +189,8 @@ class AllResponsesView(APIView):
             result[metric_id] = Ser(qs, many=True).data
         return Response(result)
 
-
-
 class SubmitView(APIView):
-    """HOD submits all data — validates required fields first, then locks editing."""
+    """HOD submits all data — validates required fields, generates PDF+Excel, locks editing."""
     permission_classes = [IsAuthenticated]
 
     REQUIRED_FIELDS = {
@@ -244,19 +246,16 @@ class SubmitView(APIView):
             for i, row in enumerate(rows):
                 for field in required_fields:
                     val = getattr(row, field, None)
-                    is_empty = (
-                        val is None or
-                        (isinstance(val, str) and val.strip() == '')
-                    )
-                    if is_empty:
-                        errors.append({
-                            'metric': Model.__name__,
-                            'row': i + 1,
-                            'field': field,
-                        })
+                    if val is None or (isinstance(val, str) and val.strip() == ''):
+                        errors.append({'metric': Model.__name__, 'row': i + 1, 'field': field})
         return errors
 
     def post(self, request):
+        import os, uuid
+        from django.http import HttpResponse
+        from django.conf import settings
+        from .report_generator import generate_excel, generate_pdf
+
         dept = get_hod_department(request.user)
         if not dept:
             return Response({'error': 'No department assigned'}, status=403)
@@ -272,14 +271,95 @@ class SubmitView(APIView):
                 'validation_errors': validation_errors,
             }, status=422)
 
-        status_obj.is_submitted = True
-        status_obj.submitted_at = timezone.now()
+        college_name = ''
+        aqar_year    = ''
+        try:
+            from .models import InstitutionSettings
+            settings_qs = InstitutionSettings.objects.filter(user__profile__role='admin').first()
+            if settings_qs:
+                college_name = getattr(settings_qs, 'college_name', '')
+                aqar_year    = getattr(settings_qs, 'aqar_year', '')
+        except Exception:
+            pass
+
+        dept_slug = dept.name.lower().replace(' ', '_').replace('/', '_')[:30]
+        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+        base_name = f"aqar_{dept_slug}_{timestamp}"
+
+        report_dir = os.path.join(settings.MEDIA_ROOT, 'aqar_reports')
+        os.makedirs(report_dir, exist_ok=True)
+
+        excel_bytes = generate_excel(dept, college_name, aqar_year)
+        pdf_bytes   = generate_pdf(dept, college_name, aqar_year)
+
+        excel_filename = f"{base_name}.xlsx"
+        pdf_filename   = f"{base_name}.pdf"
+
+        excel_path = os.path.join(report_dir, excel_filename)
+        pdf_path   = os.path.join(report_dir, pdf_filename)
+
+        with open(excel_path, 'wb') as f:
+            f.write(excel_bytes)
+        with open(pdf_path, 'wb') as f:
+            f.write(pdf_bytes)
+
+        status_obj.is_submitted  = True
+        status_obj.submitted_at  = timezone.now()
+        status_obj.report_excel  = f"aqar_reports/{excel_filename}"
+        status_obj.report_pdf    = f"aqar_reports/{pdf_filename}"
         status_obj.save()
         return Response({
             'message': 'Data submitted successfully',
             'submitted_at': status_obj.submitted_at,
+            'report_excel': f"/form/report/{dept.id}/excel/",
+            'report_pdf':   f"/form/report/{dept.id}/pdf/",
         })
+class ReportDownloadView(APIView):
+    """Download the generated PDF or Excel report for a department."""
+    permission_classes = [IsAuthenticated]
 
+    def get(self, request, dept_id, fmt):
+        import os
+        from django.http import FileResponse, HttpResponse
+        from django.conf import settings
+
+        if is_admin(request.user):
+            dept = get_object_or_404(Department, pk=dept_id)
+        else:
+            dept = get_hod_department(request.user)
+            if not dept or dept.id != int(dept_id):
+                return Response({'error': 'Forbidden'}, status=403)
+
+        try:
+            sub = dept.submission
+        except SubmissionStatus.DoesNotExist:
+            return Response({'error': 'No report available — data not submitted yet.'}, status=404)
+
+        if fmt == 'excel':
+            path_field = sub.report_excel
+            content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            ext = 'xlsx'
+        elif fmt == 'pdf':
+            path_field = sub.report_pdf
+            content_type = 'application/pdf'
+            ext = 'pdf'
+        else:
+            return Response({'error': 'Invalid format. Use excel or pdf.'}, status=400)
+
+        if not path_field:
+            return Response({'error': f'No {fmt} report available.'}, status=404)
+
+        full_path = os.path.join(settings.MEDIA_ROOT, str(path_field))
+        if not os.path.exists(full_path):
+            return Response({'error': 'Report file not found on server.'}, status=404)
+
+        dept_name = dept.name.replace(' ', '_')
+        filename  = f"AQAR_{dept_name}_{sub.submitted_at.strftime('%Y%m%d')}.{ext}"
+
+        with open(full_path, 'rb') as f:
+            response = HttpResponse(f.read(), content_type=content_type)
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
 
 class SubmissionStatusView(APIView):
     permission_classes = [IsAuthenticated]

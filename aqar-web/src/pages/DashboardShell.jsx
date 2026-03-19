@@ -21,6 +21,7 @@ function AppShell() {
   const [confirmSubmit,    setConfirmSubmit]     = useState(false)
   const [showValidErrors,  setShowValidErrors]  = useState(false)
   const [validationErrors, setValidationErrors] = useState([])
+  const [reportLinks, setReportLinks] = useState(null)
 
   const { isSubmitted, submittedAt, submitAllData, responses, collegeName, aqarYear } = useResponses()
   const { user } = useAuth()
@@ -46,16 +47,20 @@ function AppShell() {
 
   // ── Step 2: user confirmed — actually submit ───────────────────────────────
   const handleSubmit = async () => {
-    setSubmitting(true)
-    const result = await submitAllData()
-    setSubmitting(false)
-    setConfirmSubmit(false)
-    if (result.success) {
-      showToast('Data submitted to Admin successfully! Editing is now locked.', 'success')
-    } else {
-      showToast(result.error || 'Submission failed', 'error')
-    }
+  setSubmitting(true)
+  const result = await submitAllData()
+  setSubmitting(false)
+  setConfirmSubmit(false)
+  if (result.success) {
+    setReportLinks({
+      pdf:   result.report_pdf,
+      excel: result.report_excel,
+    })
+    showToast('Data submitted! Your reports are ready to download.', 'success')
+  } else {
+    showToast(result.error || 'Submission failed', 'error')
   }
+}
 
   const renderContent = () => {
     if (section === 'dashboard') return <Dashboard onNavigate={navigate} />
@@ -269,6 +274,104 @@ function AppShell() {
           </div>
         </div>
       )}
+      {reportLinks && (
+  <div style={{
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+  }}>
+    <div style={{
+      background: '#0a1520', border: '1px solid #1e3a5f',
+      borderRadius: 16, padding: '32px 36px', maxWidth: 460, width: '100%',
+      boxShadow: '0 32px 80px rgba(0,0,0,0.8)',
+    }}>
+      <div style={{ fontSize: 36, textAlign: 'center', marginBottom: 12 }}>📊</div>
+      <h3 style={{
+        margin: '0 0 8px', color: '#f1f5f9', textAlign: 'center',
+        fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 20,
+      }}>
+        Reports Generated!
+      </h3>
+      <p style={{
+        margin: '0 0 24px', color: '#64748b', textAlign: 'center',
+        fontSize: 13, fontFamily: "'Plus Jakarta Sans', sans-serif", lineHeight: 1.6,
+      }}>
+        Your AQAR data has been submitted to the admin. Download your reports below.
+        These are also accessible by the admin for review.
+      </p>
+ 
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+        {/* PDF Download */}
+        <a
+          href={`https://naac-navigator.onrender.com${reportLinks.pdf}`}
+          target="_blank"
+          rel="noreferrer"
+          download
+          style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            padding: '14px 18px', borderRadius: 10,
+            background: 'linear-gradient(135deg,#1a0a00,#2d1200)',
+            border: '1px solid #c2410c', textDecoration: 'none',
+            transition: 'all .15s',
+          }}
+          onMouseOver={e => e.currentTarget.style.borderColor = '#f97316'}
+          onMouseOut={e => e.currentTarget.style.borderColor = '#c2410c'}
+        >
+          <span style={{ fontSize: 28 }}>📄</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#f97316', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+              Download PDF Report
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>
+              Criterion-wise summary + full data tables
+            </div>
+          </div>
+          <span style={{ marginLeft: 'auto', fontSize: 18, color: '#f97316' }}>↓</span>
+        </a>
+ 
+        {/* Excel Download */}
+        <a
+          href={`https://naac-navigator.onrender.com${reportLinks.excel}`}
+          target="_blank"
+          rel="noreferrer"
+          download
+          style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            padding: '14px 18px', borderRadius: 10,
+            background: 'linear-gradient(135deg,#001a0a,#00331a)',
+            border: '1px solid #15803d', textDecoration: 'none',
+            transition: 'all .15s',
+          }}
+          onMouseOver={e => e.currentTarget.style.borderColor = '#22c55e'}
+          onMouseOut={e => e.currentTarget.style.borderColor = '#15803d'}
+        >
+          <span style={{ fontSize: 28 }}>📊</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#22c55e', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+              Download Excel Report
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>
+              All metrics in spreadsheet format
+            </div>
+          </div>
+          <span style={{ marginLeft: 'auto', fontSize: 18, color: '#22c55e' }}>↓</span>
+        </a>
+      </div>
+ 
+      <button
+        onClick={() => setReportLinks(null)}
+        style={{
+          width: '100%', padding: '10px',
+          background: '#1e293b', border: '1px solid #334155',
+          borderRadius: 8, color: '#94a3b8',
+          fontSize: 13, cursor: 'pointer',
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+        }}
+      >
+        Close
+      </button>
+    </div>
+  </div>
+)}
 
       {toast && (
         <Toast key={toast.id} msg={toast.msg} type={toast.type} onDone={() => setToast(null)} />

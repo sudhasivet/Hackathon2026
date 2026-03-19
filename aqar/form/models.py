@@ -27,6 +27,8 @@ class SubmissionStatus(models.Model):
     )
     is_submitted = models.BooleanField(default=False)
     submitted_at = models.DateTimeField(null=True, blank=True)
+    report_excel = models.CharField(max_length=500, blank=True, default='')
+    report_pdf   = models.CharField(max_length=500, blank=True, default='')
 
     def __str__(self):
         return f"{self.department} — {'submitted' if self.is_submitted else 'draft'}"

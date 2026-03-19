@@ -128,17 +128,32 @@ export function ResponseProvider({ children }) {
     }
   }, [])
 
-  const submitAllData = useCallback(async () => {
-    try {
-      const result = await submitData()
-      setIsSubmitted(true)
-      setSubmittedAt(result.submitted_at)
-      return { success: true }
-    } catch (err) {
-      return { success: false, error: err.response?.data?.error || 'Submission failed' }
+const submitAllData = async () => {
+  try {
+    const res = await api.post('/form/submit/')
+    setIsSubmitted(true)
+    setSubmittedAt(res.data?.submitted_at || null)
+    return {
+      success: true,
+      report_pdf:   res.data?.report_pdf   || null,
+      report_excel: res.data?.report_excel || null,
     }
-  }, [])
-
+  } catch (err) {
+    const data = err.response?.data
+    // Pass validation errors back to caller if backend blocked submission
+    if (err.response?.status === 422) {
+      return {
+        success: false,
+        error: data?.error || 'Required fields are empty.',
+        validation_errors: data?.validation_errors || [],
+      }
+    }
+    return {
+      success: false,
+      error: data?.error || 'Submission failed. Please try again.',
+    }
+  }
+}
   const getTotalDocs = () => Object.values(responses).reduce((s, r) => s + (r?.documents?.length || 0), 0)
   const getTotalRows = () => Object.values(responses).reduce((s, r) => s + (r?.rows?.length || 0), 0)
 

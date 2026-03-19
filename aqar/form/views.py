@@ -188,20 +188,97 @@ class AllResponsesView(APIView):
 
 
 class SubmitView(APIView):
-    """HOD submits all data — locks editing."""
+    """HOD submits all data — validates required fields first, then locks editing."""
     permission_classes = [IsAuthenticated]
+
+    REQUIRED_FIELDS = {
+        Metric_1_1:               ['program_code', 'program_name', 'course_code', 'course_name', 'year_of_introduction'],
+        Metric_1_1_3:             ['year', 'teacher_name', 'body_name'],
+        Metric_1_2_1:             ['program_code', 'program_name', 'year_introduction', 'cbcs_status'],
+        Metric_1_2_2_1_2_3:      ['program_name', 'year_of_offering', 'times_offered', 'duration', 'students_enrolled', 'students_completing'],
+        Metric_1_3_2:             ['program_name', 'program_code', 'course_name', 'course_code', 'year_offering', 'student_name'],
+        Metric_1_3_3:             ['program_name', 'program_code', 'student_name'],
+        Metric_2_1:               ['year_of_enrollment', 'student_name', 'enrollment_number', 'date_of_enrollment'],
+        Metric_2_2:               ['year', 'reserved_seats'],
+        Metric_2_3:               ['year_of_passing', 'student_name', 'enrollment_number'],
+        Metric_2_1_1:             ['program_name', 'program_code', 'sanctioned_seats', 'students_admitted'],
+        Metric_2_1_2:             ['year', 'earmarked_sc', 'earmarked_st', 'earmarked_obc', 'earmarked_gen', 'admitted_sc', 'admitted_st', 'admitted_obc', 'admitted_gen'],
+        Metric_2_4_1_2_4_3:      ['teacher_name', 'pan', 'designation', 'year_of_appointment', 'nature_of_appointment', 'department_name', 'years_of_experience', 'still_serving'],
+        Metric_2_6_3:             ['year', 'program_code', 'program_name', 'students_appeared', 'students_passed'],
+        Metric_2_4_2_3_1_2_3_3_1:['teacher_name', 'qualification', 'qualification_year', 'is_research_guide', 'still_serving'],
+        Metric_3_1:               ['teacher_name', 'email', 'gender', 'designation', 'date_of_joining', 'sanctioned_posts'],
+        Metric_3_2:               ['year', 'sanctioned_posts'],
+        Metric_3_1_1_3_1_3:      ['project_name', 'pi_name', 'pi_department', 'year_of_award', 'amount_sanctioned', 'duration', 'funding_agency', 'agency_type'],
+        Metric_3_2_2:             ['year', 'seminar_name', 'participants', 'date_from_to'],
+        Metric_3_3_2:             ['paper_title', 'authors', 'dept_name', 'journal_name', 'year', 'issn'],
+        Metric_3_3_3:             ['sl_no', 'teacher_name', 'national_international', 'year_of_publication', 'isbn_issn', 'publisher'],
+        Metric_3_4_2:             ['activity_name', 'award_name', 'awarding_body', 'year_of_award'],
+        Metric_3_4_3_3_4_4:      ['activity_name', 'organising_agency', 'scheme_name', 'year', 'students_participated'],
+        Metric_3_5_1:             ['sl_no', 'activity_title', 'collaborating_agency', 'participant_name', 'year', 'duration', 'nature_of_activity'],
+        Metric_3_5_2:             ['organisation', 'institution_industry', 'year_of_signing', 'duration', 'activities_under_mou', 'participants_count'],
+        Metric_4_1_3:             ['room_name', 'ict_type'],
+        Metric_4_1_4_4_4_1:      ['year', 'budget_allocated', 'expenditure_augmentation', 'total_expenditure_ex_salary', 'maintenance_academic', 'maintenance_physical'],
+        Metric_4_2_2_4_2_3:      ['library_resource', 'expenditure_ejournals_ebooks', 'total_library_expenditure'],
+        Metric_5_1_1_5_1_2:      ['year', 'scheme_name', 'govt_students_count', 'govt_amount', 'institution_students_count', 'institution_amount'],
+        Metric_5_1_3:             ['program_name', 'date_implemented', 'students_enrolled'],
+        Metric_5_1_4:             ['year', 'competitive_exam_activity', 'competitive_exam_students', 'career_counselling_activity', 'career_counselling_students', 'students_placed_campus'],
+        Metric_5_2_1:             ['year', 'student_name', 'program_graduated', 'employer_name', 'pay_package'],
+        Metric_5_2_2:             ['student_name', 'program_graduated', 'institution_joined', 'program_admitted'],
+        Metric_5_2_3:             ['year', 'roll_number', 'student_name'],
+        Metric_5_3_1:             ['year', 'award_name', 'team_or_individual', 'level', 'sports_or_cultural', 'student_name'],
+        Metric_5_3_3:             ['event_date', 'event_name', 'student_name'],
+        Metric_6_2_3:             ['area', 'vendor_details', 'year_implemented'],
+        Metric_6_3_2:             ['year', 'teacher_name', 'conference_name', 'amount'],
+        Metric_6_3_3:             ['dates', 'participants_count'],
+        Metric_6_3_4:             ['teacher_name', 'program_title', 'duration'],
+        Metric_6_4_2:             ['year', 'agency_name', 'purpose', 'amount'],
+        Metric_6_5_3:             ['year'],
+    }
+
+    def _validate(self, dept):
+        errors = []
+        for Model, required_fields in self.REQUIRED_FIELDS.items():
+            rows = Model.objects.filter(department=dept)
+            if not rows.exists():
+                continue
+            for i, row in enumerate(rows):
+                for field in required_fields:
+                    val = getattr(row, field, None)
+                    is_empty = (
+                        val is None or
+                        (isinstance(val, str) and val.strip() == '')
+                    )
+                    if is_empty:
+                        errors.append({
+                            'metric': Model.__name__,
+                            'row': i + 1,
+                            'field': field,
+                        })
+        return errors
 
     def post(self, request):
         dept = get_hod_department(request.user)
         if not dept:
             return Response({'error': 'No department assigned'}, status=403)
+
         status_obj, _ = SubmissionStatus.objects.get_or_create(department=dept)
         if status_obj.is_submitted:
             return Response({'error': 'Already submitted'}, status=400)
+
+        validation_errors = self._validate(dept)
+        if validation_errors:
+            return Response({
+                'error': 'Required fields are empty. Fill them before submitting.',
+                'validation_errors': validation_errors,
+            }, status=422)
+
         status_obj.is_submitted = True
         status_obj.submitted_at = timezone.now()
         status_obj.save()
-        return Response({'message': 'Data submitted successfully', 'submitted_at': status_obj.submitted_at})
+        return Response({
+            'message': 'Data submitted successfully',
+            'submitted_at': status_obj.submitted_at,
+        })
 
 
 class SubmissionStatusView(APIView):

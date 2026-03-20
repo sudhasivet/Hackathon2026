@@ -22,9 +22,10 @@ function AppShell() {
   const [showValidErrors,  setShowValidErrors]  = useState(false)
   const [validationErrors, setValidationErrors] = useState([])
   const [reportLinks, setReportLinks] = useState(null)
-
+  const { downloadReport } = useResponses()
   const { isSubmitted, submittedAt, submitAllData, responses, collegeName, aqarYear } = useResponses()
   const { user } = useAuth()
+  const deptId = reportLinks?.pdf?.split('/')[3]
 
   const showToast = useCallback((msg, type = 'success') => {
     setToast({ msg, type, id: Date.now() })
@@ -301,7 +302,7 @@ function AppShell() {
  
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
         {/* PDF Download */}
-        <a
+        {/* <a
           href={`https://naac-navigator.onrender.com${reportLinks.pdf}`}
           target="_blank"
           rel="noreferrer"
@@ -315,8 +316,50 @@ function AppShell() {
           }}
           onMouseOver={e => e.currentTarget.style.borderColor = '#f97316'}
           onMouseOut={e => e.currentTarget.style.borderColor = '#c2410c'}
-        >
-          <span style={{ fontSize: 28 }}>📄</span>
+        > */}
+         <div
+  onClick={() => downloadReport(deptId, 'pdf')}
+  style={{
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+    padding: '14px 18px',
+    borderRadius: 10,
+    background: 'linear-gradient(135deg,#1a0a00,#2d1200)',
+    border: '1px solid #c2410c',
+    cursor: 'pointer'
+  }}
+>
+  <span style={{ fontSize: 28 }}>📄</span>
+
+  <div>
+    <div style={{
+      fontSize: 13,
+      fontWeight: 700,
+      color: '#f97316',
+      fontFamily: "'Plus Jakarta Sans', sans-serif"
+    }}>
+      Download PDF Report
+    </div>
+
+    <div style={{
+      fontSize: 11,
+      color: '#64748b',
+      fontFamily: 'monospace'
+    }}>
+      Criterion-wise summary + full data tables
+    </div>
+  </div>
+
+  <span style={{
+    marginLeft: 'auto',
+    fontSize: 18,
+    color: '#f97316'
+  }}>
+    ↓
+  </span>
+</div>
+          {/* <span style={{ fontSize: 28 }}>📄</span>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#f97316', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
               Download PDF Report
@@ -325,11 +368,11 @@ function AppShell() {
               Criterion-wise summary + full data tables
             </div>
           </div>
-          <span style={{ marginLeft: 'auto', fontSize: 18, color: '#f97316' }}>↓</span>
-        </a>
+          <span style={{ marginLeft: 'auto', fontSize: 18, color: '#f97316' }}>↓</span> */}
+        {/* </a> */}
  
         {/* Excel Download */}
-        <a
+        {/* <a
           href={`https://naac-navigator.onrender.com${reportLinks.excel}`}
           target="_blank"
           rel="noreferrer"
@@ -343,8 +386,50 @@ function AppShell() {
           }}
           onMouseOver={e => e.currentTarget.style.borderColor = '#22c55e'}
           onMouseOut={e => e.currentTarget.style.borderColor = '#15803d'}
-        >
-          <span style={{ fontSize: 28 }}>📊</span>
+        > */}
+<div
+  onClick={() => downloadReport(deptId, 'excel')}
+  style={{
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+    padding: '14px 18px',
+    borderRadius: 10,
+    background: 'linear-gradient(135deg,#001a0a,#00331a)',
+    border: '1px solid #15803d',
+    cursor: 'pointer'
+  }}
+>
+  <span style={{ fontSize: 28 }}>📊</span>
+
+  <div>
+    <div style={{
+      fontSize: 13,
+      fontWeight: 700,
+      color: '#22c55e',
+      fontFamily: "'Plus Jakarta Sans', sans-serif"
+    }}>
+      Download Excel Report
+    </div>
+
+    <div style={{
+      fontSize: 11,
+      color: '#64748b',
+      fontFamily: 'monospace'
+    }}>
+      All metrics in spreadsheet format
+    </div>
+  </div>
+
+  <span style={{
+    marginLeft: 'auto',
+    fontSize: 18,
+    color: '#22c55e'
+  }}>
+    ↓
+  </span>
+</div>
+          {/* <span style={{ fontSize: 28 }}>📊</span>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#22c55e', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
               Download Excel Report
@@ -353,8 +438,8 @@ function AppShell() {
               All metrics in spreadsheet format
             </div>
           </div>
-          <span style={{ marginLeft: 'auto', fontSize: 18, color: '#22c55e' }}>↓</span>
-        </a>
+          <span style={{ marginLeft: 'auto', fontSize: 18, color: '#22c55e' }}>↓</span> */}
+        {/* </a> */}
       </div>
  
       <button

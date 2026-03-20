@@ -84,7 +84,9 @@ export default function Reports({ onToast }) {
   const { responses, collegeName, aqarYear } = useResponses()
   const { done, total, pct } = getOverallCompletion(responses)
   const [exported, setExported] = useState(false)
-
+  const { downloadReport } = useResponses()
+  const [reportLinks, setReportLinks] = useState(null)
+  const deptId = reportLinks?.pdf?.split('/')[3]
   const generateJSON = () => {
     const report = {
       institution: collegeName,
@@ -148,6 +150,26 @@ export default function Reports({ onToast }) {
         <div style={{ fontSize: 11, color: '#334155', marginTop: 6, fontFamily: 'monospace' }}>{pct}% complete</div>
 
         <div style={{ display: 'flex', gap: 12, marginTop: 22, flexWrap: 'wrap' }}>
+          <button onClick={()=> downloadReport(deptId,'excel')} style={{
+            padding: '12px 24px', borderRadius: 8,
+            background: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
+            color: '#fff', border: 'none', cursor: 'pointer',
+            fontWeight: 700, fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif",
+            display: 'flex', alignItems: 'center', gap: 8,
+            boxShadow: '0 4px 14px #4f46e530',
+          }}>
+            <span>📄</span> Export excel
+          </button>
+          <button onClick={()=> downloadReport(deptId,'excel')} style={{
+            padding: '12px 24px', borderRadius: 8,
+            background: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
+            color: '#fff', border: 'none', cursor: 'pointer',
+            fontWeight: 700, fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif",
+            display: 'flex', alignItems: 'center', gap: 8,
+            boxShadow: '0 4px 14px #4f46e530',
+          }}>
+            <span>📄</span> Export pdf 
+          </button>
           <button onClick={generateJSON} style={{
             padding: '12px 24px', borderRadius: 8,
             background: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
@@ -158,17 +180,6 @@ export default function Reports({ onToast }) {
           }}>
             <span>📄</span> Export JSON
           </button>
-          {[
-            { label: '📝 Export Word', tip: 'Coming Soon' },
-            { label: '📑 Export PDF', tip: 'Coming Soon' },
-          ].map(({ label, tip }) => (
-            <button key={label} disabled title={tip} style={{
-              padding: '12px 24px', borderRadius: 8,
-              background: '#1e293b', color: '#475569',
-              border: 'none', cursor: 'not-allowed',
-              fontWeight: 600, fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}>{label} <span style={{ fontSize: 10, opacity: .6 }}>({tip})</span></button>
-          ))}
         </div>
         {exported && (
           <p style={{ margin: '14px 0 0', color: '#22c55e', fontSize: 13, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>

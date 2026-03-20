@@ -7,7 +7,7 @@ import {
   fetchSettings, saveSettings as apiSaveSettings,
   fetchSubmissionStatus, submitData,
 } from '../api/formApi'
-import api from '../api/formApi'
+import api from '../api/OnlyApi'
 export const ResponseContext = createContext()
 
 export function ResponseProvider({ children }) {
@@ -128,6 +128,27 @@ export function ResponseProvider({ children }) {
     }
   }, [])
 
+const downloadReport = async (deptId, format = 'pdf') => {
+  try {
+    const res = await api.get(`/form/report/${deptId}/${format}/`, {
+      responseType: 'blob',
+    });
+
+    const blob = new Blob([res.data]);
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AQAR_Report.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Download failed:', err);
+  }
+};
 const submitAllData = async () => {
   try {
     const res = await api.post('/form/submit/')
@@ -165,7 +186,7 @@ const submitAllData = async () => {
       saveCollegeSettings,
       getTotalDocs, getTotalRows,
       loading, syncError,
-      isSubmitted, submittedAt, submitAllData,
+      isSubmitted, submittedAt, submitAllData,downloadReport
     }}>
       {children}
     </ResponseContext.Provider>

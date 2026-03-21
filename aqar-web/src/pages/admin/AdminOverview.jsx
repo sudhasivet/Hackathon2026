@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { fetchDepartments, fetchHODs, adminUnlockDept } from '../../api/formApi'
 import { Card, ProgressBar } from '../../components/ui'
+import { AdminReportDownload } from '../reports'
 
 export default function AdminOverview({ onNavigateDept, onToast }) {
   const [depts,   setDepts]   = useState([])
@@ -136,32 +137,27 @@ export default function AdminOverview({ onNavigateDept, onToast }) {
               </div>
 
               {/* Actions */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => onNavigateDept(dept)}
-                  style={{
-                    padding: '6px 14px', borderRadius: 6,
-                    background: '#0a1929', border: '1px solid #1e3a5f',
-                    color: '#7dd3fc', cursor: 'pointer', fontSize: 12,
-                    fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600,
-                  }}
-                >
-                  View Data
-                </button>
-                {dept.is_submitted && (
-                  <button
-                    onClick={() => handleUnlock(dept)}
-                    style={{
-                      padding: '6px 14px', borderRadius: 6,
-                      background: '#1a0e00', border: '1px solid #92400e',
-                      color: '#fbbf24', cursor: 'pointer', fontSize: 12,
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    }}
-                  >
-                    Unlock
-                  </button>
-                )}
-              </div>
+               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+           onClick={() => onNavigateDept(dept)}
+           style={{ padding: '6px 14px', borderRadius: 6, background: '#0a1929', border: '1px solid #1e3a5f', color: '#7dd3fc', cursor: 'pointer', fontSize: 12, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600 }}
+         >
+           View Data
+         </button>
+         {dept.is_submitted && (
+           <button
+             onClick={() => handleUnlock(dept)}
+             style={{ padding: '6px 14px', borderRadius: 6, background: '#1a0e00', border: '1px solid #92400e', color: '#fbbf24', cursor: 'pointer', fontSize: 12, fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+           >
+             Unlock
+           </button>
+         )}
+       </div>
+       {dept.is_submitted && (
+         <AdminReportDownload deptId={dept.id} onToast={onToast} />
+       )}
+     </div>
             </div>
           ))}
         </div>

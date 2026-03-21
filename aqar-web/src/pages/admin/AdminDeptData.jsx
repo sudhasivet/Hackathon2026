@@ -1,17 +1,9 @@
-// src/pages/admin/AdminDeptData.jsx  — FIXED
-// Root cause: MetricCard → TableForm → useResponses() was calling the real
-// ResponseContext which wasn't provided in the admin view tree.
-// Fix: Wrap with ResponseProvider and pass a dept-scoped override via a
-// separate AdminSaveContext so MetricCard/TableForm work without changes.
-
-import { useState, useEffect, useCallback, createContext, useContext } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { fetchDeptResponses, adminSaveMetric, adminUnlockDept } from '../../api/formApi'
 import { CRITERIA, getCriterionCompletion } from '../../utils/naacData'
-import { ProgressBar, Card } from '../../components/ui'
+import { Card } from '../../components/ui'
 import MetricCard from '../../components/metrics/MetricCard'
-
-// ── Minimal fake ResponseContext so MetricCard/TableForm don't crash ──────────
-// We re-export a context that matches what useResponses() returns.
+import { AdminReportDownload } from '../reports'
 import { ResponseContext } from '../../context/ResponseContext'
 
 export default function AdminDeptData({ dept, onToast }) {
@@ -65,8 +57,7 @@ export default function AdminDeptData({ dept, onToast }) {
     }
   }, [responses, dept?.id])
 
-  // Stub file operations — admin doesn't upload docs in this view
-  const uploadFile    = useCallback(async () => ({ success: false, error: 'Not available in admin view' }), [])
+  const uploadFile     = useCallback(async () => ({ success: false, error: 'Not available in admin view' }), [])
   const removeDocument = useCallback(async () => {}, [])
 
   const handleUnlock = async () => {
@@ -94,7 +85,6 @@ export default function AdminDeptData({ dept, onToast }) {
   const streamLabel = dept.stream === 'aided' ? 'Aided' : 'Self Finance'
   const streamColor = dept.stream === 'aided' ? '#22c55e' : '#818cf8'
 
-  // Build the fake context value that matches exactly what useResponses() expects
   const fakeContextValue = {
     responses,
     updateResponse,
@@ -110,22 +100,22 @@ export default function AdminDeptData({ dept, onToast }) {
     getTotalRows: () => Object.values(responses).reduce((s, r) => s + (r?.rows?.length || 0), 0),
     loading: false,
     syncError: null,
-    isSubmitted: false,  // admin can always edit
+    isSubmitted: false,
     submittedAt: null,
     submitAllData: async () => ({ success: false }),
   }
 
   return (
-    // Provide the fake ResponseContext so MetricCard/TableForm work correctly
     <ResponseContext.Provider value={fakeContextValue}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-        {/* Header */}
+        {/* ── Header ── */}
         <div style={{
           background: 'linear-gradient(135deg, #060d18 0%, #0a1520 100%)',
           border: `1px solid ${streamColor}40`, borderRadius: 16, padding: '22px 26px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap',
         }}>
+          {/* Left — name + stream */}
           <div>
             <h2 style={{ margin: '0 0 4px', fontSize: 22, color: '#f1f5f9', fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800 }}>
               {dept.name}
@@ -139,21 +129,26 @@ export default function AdminDeptData({ dept, onToast }) {
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+
+          {/* Right — status + unlock + download */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-end' }}>
             {isSubmitted ? (
               <>
-                <span style={{ fontSize: 12, color: '#22c55e', fontFamily: 'monospace' }}>✓ Submitted</span>
-                <button
-                  onClick={handleUnlock}
-                  style={{
-                    padding: '8px 18px', borderRadius: 8,
-                    background: '#1a0e00', border: '1px solid #92400e',
-                    color: '#fbbf24', cursor: 'pointer', fontSize: 13,
-                    fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600,
-                  }}
-                >
-                  Unlock for Editing
-                </button>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: '#22c55e', fontFamily: 'monospace' }}>✓ Submitted</span>
+                  <button
+                    onClick={handleUnlock}
+                    style={{
+                      padding: '8px 18px', borderRadius: 8,
+                      background: '#1a0e00', border: '1px solid #92400e',
+                      color: '#fbbf24', cursor: 'pointer', fontSize: 13,
+                      fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600,
+                    }}
+                  >
+                    Unlock for Editing
+                  </button>
+                </div>
+                <AdminReportDownload deptId={dept.id} onToast={onToast} />
               </>
             ) : (
               <span style={{ fontSize: 12, color: '#fbbf24', fontFamily: 'monospace' }}>⏳ Not Submitted</span>
@@ -161,11 +156,11 @@ export default function AdminDeptData({ dept, onToast }) {
           </div>
         </div>
 
-        {/* Criterion filter tabs */}
+        {/* ── Criterion filter tabs ── */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {CRITERIA.map(c => {
             const { pct } = getCriterionCompletion(c, responses)
-            const active = activeCrit === c.key
+            const active  = activeCrit === c.key
             return (
               <button
                 key={c.key}
@@ -193,11 +188,13 @@ export default function AdminDeptData({ dept, onToast }) {
                 background: 'transparent', border: '1px solid #334155',
                 color: '#475569', cursor: 'pointer', fontSize: 12,
               }}
-            >✕ Clear</button>
+            >
+              ✕ Clear
+            </button>
           )}
         </div>
 
-        {/* Metrics per criterion */}
+        {/* ── Metrics per criterion ── */}
         {CRITERIA
           .filter(c => !activeCrit || c.key === activeCrit)
           .map(criterion => (
@@ -223,7 +220,7 @@ export default function AdminDeptData({ dept, onToast }) {
                     metric={metric}
                     response={responses[metric.id] || { rows: [], documents: [], saved: false }}
                     color={criterion.color}
-                    readOnly={false}  // admin can always edit
+                    readOnly={false}
                     onChange={(val) => updateResponse(metric.id, val)}
                     onSave={async () => {
                       const result = await saveResponse(metric.id)

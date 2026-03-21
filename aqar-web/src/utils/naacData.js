@@ -569,13 +569,102 @@ const C6_METRICS = [
   },
 ]
 
+// ── Criterion VII — Institutional Values and Social Responsibilities ───────────
+// Source: Criterion_VII_template.xlsx
+// 7.1.1  → Gender Equity           (cols: Title | Period from | Period To | Male | Female | Total)
+// 7.1.3  → Divyangjan Friendliness (cols: Item facilities | Yes/No | Number of beneficiaries)
+// 7.1.4  → Inclusion & Situatedness(cols: Year | locational | community | Date | Duration | Name | Issues | Participants)
+// 7.1.5  → Human Values & Ethics   (cols: Title | Date of publication | Followup)
+// 7.1.11 → Commemorative Days      (cols: Activity | Duration From | Duration To | Male | Female | Total)
+const C7_METRICS = [
+  {
+    id: '7.1.1',
+    title: 'Gender Equity Promotion Programmes',
+    type: 'TBL', modelKey: 'Metric_7_1_1',
+    columns: [
+      col('title',               'Title of the Programme',       'text',   { required: true }),
+      col('period_from',         'Period From',                  'date',   { required: true }),
+      col('period_to',           'Period To',                    'date',   { required: true }),
+      col('participants_male',   'No. of Participants — Male',   'number', { required: true }),
+      col('participants_female', 'No. of Participants — Female', 'number', { required: true }),
+      col('participants_total',  'No. of Participants — Total',  'number', { required: true }),
+    ],
+    docRequired: false,
+  },
+  {
+    id: '7.1.3',
+    title: 'Differently Abled (Divyangjan) Friendliness',
+    type: 'TBL', modelKey: 'Metric_7_1_3',
+    columns: [
+      col('facility', 'Item / Facility', 'select', {
+        options: [
+          'Physical facilities',
+          'Provision for lift',
+          'Ramp / Rails',
+          'Braille Software / facilities',
+          'Rest Rooms',
+          'Scribes for examination',
+          'Special skill development for differently abled students',
+          'Any other similar facility',
+        ],
+        required: true,
+      }),
+      col('available',     'Available (Yes/No)',      'select', { options: ['Yes', 'No'], required: true }),
+      col('beneficiaries', 'Number of Beneficiaries', 'number', { required: false }),
+    ],
+    docRequired: false,
+  },
+  {
+    id: '7.1.4',
+    title: 'Inclusion and Situatedness',
+    type: 'TBL', modelKey: 'Metric_7_1_4',
+    columns: [
+      col('year',                   'Year',                                                                      'year',     { required: true }),
+      col('locational_initiatives', 'Number of Initiatives to Address Locational Advantages and Disadvantages', 'number',   { required: true }),
+      col('community_initiatives',  'Number of Initiatives to Engage with and Contribute to Local Community',   'number',   { required: true }),
+      col('date',                   'Date of Initiative',                                                       'date',     { required: true }),
+      col('duration',               'Duration',                                                                 'text',     { required: true }),
+      col('initiative_name',        'Name of Initiative',                                                       'text',     { required: true }),
+      col('issues_addressed',       'Issues Addressed',                                                         'textarea', { required: true }),
+      col('participants_count',     'Number of Participating Students and Staff',                               'number',   { required: true }),
+    ],
+    docRequired: false,
+  },
+  {
+    id: '7.1.5',
+    title: 'Human Values and Professional Ethics',
+    type: 'TBL', modelKey: 'Metric_7_1_5',
+    columns: [
+      col('title',               'Title of Code / Policy / Publication', 'text',     { required: true }),
+      col('date_of_publication', 'Date of Publication',                  'date',     { required: true }),
+      col('followup',            'Follow-up Action Taken',               'textarea', { required: false }),
+    ],
+    docRequired: false,
+  },
+  {
+    id: '7.1.11',
+    title: 'National and International Commemorative Days, Events and Festivals',
+    type: 'TBL', modelKey: 'Metric_7_1_11',
+    columns: [
+      col('activity',            'Activity / Event / Festival Name',  'text',   { required: true }),
+      col('duration_from',       'Duration From',                      'date',   { required: true }),
+      col('duration_to',         'Duration To',                        'date',   { required: true }),
+      col('participants_male',   'No. of Participants — Male',         'number', { required: true }),
+      col('participants_female', 'No. of Participants — Female',       'number', { required: true }),
+      col('participants_total',  'No. of Participants — Total',        'number', { required: true }),
+    ],
+    docRequired: false,
+  },
+]
+
 export const CRITERIA = [
-  { key: 'c1', label: 'Criterion I',   subtitle: 'Curricular Aspects',                  icon: '📚', color: '#0ea5e9', metrics: C1_METRICS },
-  { key: 'c2', label: 'Criterion II',  subtitle: 'Teaching-Learning & Evaluation',      icon: '🎓', color: '#22c55e', metrics: C2_METRICS },
-  { key: 'c3', label: 'Criterion III', subtitle: 'Research, Innovations & Extension',   icon: '🔬', color: '#f97316', metrics: C3_METRICS },
-  { key: 'c4', label: 'Criterion IV',  subtitle: 'Infrastructure & Learning Resources', icon: '🏛️', color: '#a855f7', metrics: C4_METRICS },
-  { key: 'c5', label: 'Criterion V',   subtitle: 'Student Support & Progression',       icon: '🎯', color: '#eab308', metrics: C5_METRICS },
-  { key: 'c6', label: 'Criterion VI',  subtitle: 'Governance, Leadership & Management', icon: '⚙️', color: '#14b8a6', metrics: C6_METRICS },
+  { key: 'c1', label: 'Criterion I',   subtitle: 'Curricular Aspects',                          icon: '📚', color: '#0ea5e9', metrics: C1_METRICS },
+  { key: 'c2', label: 'Criterion II',  subtitle: 'Teaching-Learning & Evaluation',              icon: '🎓', color: '#22c55e', metrics: C2_METRICS },
+  { key: 'c3', label: 'Criterion III', subtitle: 'Research, Innovations & Extension',           icon: '🔬', color: '#f97316', metrics: C3_METRICS },
+  { key: 'c4', label: 'Criterion IV',  subtitle: 'Infrastructure & Learning Resources',         icon: '🏛️', color: '#a855f7', metrics: C4_METRICS },
+  { key: 'c5', label: 'Criterion V',   subtitle: 'Student Support & Progression',               icon: '🎯', color: '#eab308', metrics: C5_METRICS },
+  { key: 'c6', label: 'Criterion VI',  subtitle: 'Governance, Leadership & Management',        icon: '⚙️', color: '#14b8a6', metrics: C6_METRICS },
+  { key: 'c7', label: 'Criterion VII', subtitle: 'Institutional Values & Social Responsibilities', icon: '🌿', color: '#ec4899', metrics: C7_METRICS },
 ]
 
 export const ALL_METRICS       = CRITERIA.flatMap(c => c.metrics)

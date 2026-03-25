@@ -51,8 +51,15 @@ export const createHOD          = (data)       => api.post('/form/hods/', data).
 export const deleteHOD          = (id)         => api.delete(`/form/hods/${id}/`)
 
 export const fetchDeptResponses = (deptId)     => api.get(`/form/admin/responses/${deptId}/`).then(r => r.data)
-export const adminSaveMetric    = (deptId, metricId, rows) =>
-  api.post(`/form/admin/responses/${deptId}/${slug(metricId)}/`, { rows }).then(r => r.data)
+export const adminSaveMetric = async (deptId, metricId, rows) => {
+  const metrics = metricId.includes(',')
+    ? metricId.split(',').map(m => m.trim())
+    : [metricId]
+
+  for (const m of metrics) {
+    await api.post(`/form/admin/responses/${deptId}/${slug(m)}/`, { rows })
+  }
+}
 export const adminUnlockDept    = (deptId)     => api.post(`/form/admin/unlock/${deptId}/`).then(r => r.data)
 export const fetchAllSubmissions = ()          => api.get('/form/submission-status/').then(r => r.data)
 export default api

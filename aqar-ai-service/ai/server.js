@@ -1,7 +1,8 @@
-require('dotenv').config()
+import dotenv from 'dotenv';
+dotenv.config();
 
 import express, { json } from 'express'
-import { generateParagraph, generateAllParagraphs, clearCache } from './generator'
+import { generateParagraph, generateAllParagraphs, clearCache } from './generator.js'
 
 const app  = express()
 const PORT = process.env.AI_PORT || 3700

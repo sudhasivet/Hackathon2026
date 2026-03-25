@@ -36,7 +36,7 @@ const FIELD_INFO = {
     },
   },
 
-  '1.2.2 , 1.2.3': {
+  '1.2.2': {
     title: '1.2.2 Add-on / Certificate Programs Offered & 1.2.3 Students Enrolled',
     description: '1.2.2: Number of Add on/Certificate programs offered during the year.\n1.2.3: Number of students enrolled in Certificate/Add-on programs as against the total number of students during the year.',
     fields: {

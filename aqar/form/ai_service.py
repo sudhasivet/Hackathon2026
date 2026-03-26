@@ -6,7 +6,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-AI_SERVICE_URL = os.environ.get('https://hackathon2026-o1pa.onrender.com')
+AI_SERVICE_URL = 'https://hackathon2026-o1pa.onrender.com'
 AI_TIMEOUT     = int(os.environ.get('AI_TIMEOUT', 120))
 
 
@@ -85,14 +85,11 @@ def generate_ai_paragraphs(dept, college_name: str = '', aqar_year: str = '') ->
         # Extract text from each metric result
         return {mid: result.get('text', '') for mid, result in data.items() if isinstance(result, dict)}
     except requests.Timeout:
-        logger.warning('[AI] Service timeout — using data-only report')
-        return {}
+        print("timout by ai")
     except requests.ConnectionError:
-        logger.warning('[AI] Service unavailable — using data-only report')
-        return {}
-    except Exception as e:
-        logger.error(f'[AI] Unexpected error: {e}')
-        return {}
+        print("Conn error made with ai")
+    except ExceptionGroup.mro():
+        pass
 
 
 def generate_single_paragraph(metric_id: str, dept, college_name: str = '', aqar_year: str = '') -> Optional[str]:

@@ -85,11 +85,14 @@ def generate_ai_paragraphs(dept, college_name: str = '', aqar_year: str = '') ->
         # Extract text from each metric result
         return {mid: result.get('text', '') for mid, result in data.items() if isinstance(result, dict)}
     except requests.Timeout:
-        print("timout by ai")
+        logger.warning('[AI] Service timeout — using data-only report')
+        return {}
     except requests.ConnectionError:
-        print("Conn error made with ai")
-    except ExceptionGroup.mro():
-        pass
+        logger.warning('[AI] Service unavailable — using data-only report')
+        return {}
+    except Exception as e:
+        logger.error(f'[AI] Unexpected error: {e}')
+        return {}
 
 
 def generate_single_paragraph(metric_id: str, dept, college_name: str = '', aqar_year: str = '') -> Optional[str]:

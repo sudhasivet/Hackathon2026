@@ -283,7 +283,7 @@ class SubmitView(APIView):
         aqar_year    = ''
         try:
             from .models import InstitutionSettings
-            settings_qs = InstitutionSettings.objects.filter(user__profile__role='admin').first()
+            settings_qs = True
             if settings_qs:
                 college_name = getattr(settings_qs, 'college_name', '')
                 aqar_year    = getattr(settings_qs, 'aqar_year', '')

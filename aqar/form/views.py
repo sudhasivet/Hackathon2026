@@ -696,7 +696,7 @@ class InstitutionSettingsView(APIView):
             admin_profiles = UserProfile.objects.filter(role='admin')
             if admin_profiles.exists():
                 target_user = admin_profiles.first().user
-        obj, _ = InstitutionSettings.objects.get_or_create(user=target_user)
+        obj, _ = InstitutionSettings.objects.get_or_create()
         return Response(InstitutionSettingsSerializer(obj).data)
 
     def post(self, request):

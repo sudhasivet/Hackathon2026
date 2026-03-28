@@ -29,7 +29,7 @@ class SubmissionStatus(models.Model):
     submitted_at = models.DateTimeField(null=True, blank=True)
     report_excel = models.CharField(max_length=500, blank=True, default='')
     report_pdf   = models.CharField(max_length=500, blank=True, default='')
-
+    
     def __str__(self):
         return f"{self.department} — {'submitted' if self.is_submitted else 'draft'}"
 
@@ -61,7 +61,7 @@ class Document(models.Model):
 
 class MetricBase(models.Model):
     department = models.ForeignKey(Department, on_delete=models.CASCADE)
-
+    aqar_year = models.CharField(max_length=10,default="2023-24")
     class Meta:
         abstract = True
 

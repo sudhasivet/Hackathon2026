@@ -31,7 +31,7 @@ export default function Login() {
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={s.logo}>🎓</div>
-          <h1 style={s.title}>NAAC AQAR Portal</h1>
+          <h1 style={s.title}>NAAC Navigator</h1>
           <p style={s.sub}>Sign in with your IQAC credentials</p>
         </div>
 

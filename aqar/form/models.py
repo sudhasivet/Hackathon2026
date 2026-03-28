@@ -36,8 +36,8 @@ class SubmissionStatus(models.Model):
 
 class InstitutionSettings(models.Model):
     user         = models.OneToOneField(User, on_delete=models.CASCADE, related_name='institution_settings')
-    college_name = models.CharField(max_length=255, default='Your Institution')
-    aqar_year    = models.CharField(max_length=10, default='2023-24')
+    college_name = models.CharField(max_length=255, default='SIVET College')
+    aqar_year    = models.CharField(max_length=10, default='2025-26')
     updated_at   = models.DateTimeField(auto_now=True)
 
     def __str__(self):

@@ -1,3 +1,4 @@
+// clean row
 function cleanRow(row) {
   const out = {}
   for (const [k, v] of Object.entries(row)) {

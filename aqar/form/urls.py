@@ -110,4 +110,5 @@ urlpatterns = [
     path('documents/<str:metric_id>/', DocumentListView.as_view()),
     path('settings/',   InstitutionSettingsView.as_view()),
     path('completion/', CompletionStatusView.as_view()),
+    path('admin/combined-report/',            AdminCombinedReportView.as_view()),
 ]

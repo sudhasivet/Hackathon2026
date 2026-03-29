@@ -1,167 +1,212 @@
-// src/pages/admin/AdminOverview.jsx
 import { useState, useEffect } from 'react'
-import { fetchDepartments, fetchHODs, adminUnlockDept } from '../../api/formApi'
-import { Card, ProgressBar } from '../../components/ui'
-import { AdminReportDownload } from '../reports'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
+import { openCombinedReport, fetchSubmissionStatus, adminUnlock } from '../../api/formApi'
 
-export default function AdminOverview({ onNavigateDept, onToast }) {
-  const [depts,   setDepts]   = useState([])
-  const [hods,    setHods]    = useState([])
-  const [loading, setLoading] = useState(true)
+const AQAR_YEARS = ['2023-24', '2024-25', '2025-26']
 
-  const load = () => {
-    setLoading(true)
-    Promise.all([fetchDepartments(), fetchHODs()])
-      .then(([d, h]) => { setDepts(d); setHods(h) })
-      .catch(() => onToast('Failed to load data', 'error'))
-      .finally(() => setLoading(false))
+export default function AdminOverview() {
+  const { user, logout }         = useAuth()
+  const navigate                  = useNavigate()
+  const [year, setYear]           = useState(
+    localStorage.getItem('aqar_year') || '2023-24'
+  )
+  const [departments, setDepts]   = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [unlocking, setUnlocking] = useState(null)
+
+  // ── Persist chosen year globally ─────────────────────────────────────────
+  const handleYearChange = (y) => {
+    setYear(y)
+    localStorage.setItem('aqar_year', y)
+    // Optionally broadcast to other tabs:
+    window.dispatchEvent(new CustomEvent('aqar_year_change', { detail: y }))
   }
 
-  useEffect(() => { load() }, [])
+  // ── Fetch submission status for current year ──────────────────────────────
+  useEffect(() => {
+    setLoading(true)
+    fetchSubmissionStatus(year)
+      .then(res => setDepts(res.data))
+      .catch(() => setDepts([]))
+      .finally(() => setLoading(false))
+  }, [year])
 
-  const submitted  = depts.filter(d => d.is_submitted).length
-  const withHOD    = depts.filter(d => d.hod_username).length
-  const noHOD      = depts.filter(d => !d.hod_username).length
-  const pct        = depts.length ? Math.round((submitted / depts.length) * 100) : 0
-
-  const handleUnlock = async (dept) => {
-    if (!window.confirm(`Unlock ${dept.name} (${dept.stream_display}) for editing?`)) return
+  const handleUnlock = async (deptId) => {
+    setUnlocking(deptId)
     try {
-      await adminUnlockDept(dept.id)
-      onToast(`${dept.name} unlocked`, 'success')
-      load()
-    } catch {
-      onToast('Failed to unlock', 'error')
+      await adminUnlock(deptId, year)
+      setDepts(prev => prev.map(d =>
+        d.department_id === deptId ? { ...d, is_submitted: false } : d
+      ))
+    } catch (e) {
+      alert('Unlock failed: ' + (e.response?.data?.error || e.message))
+    } finally {
+      setUnlocking(null)
     }
   }
 
-  const streamColor = (stream) => stream === 'aided' ? '#22c55e' : '#818cf8'
-
-  if (loading) return (
-    <div style={{ textAlign: 'center', padding: 60, color: '#475569', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      Loading…
-    </div>
-  )
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 14 }}>
-        {[
-          { label: 'Departments',  value: depts.length,  icon: '🏛️', color: '#818cf8' },
-          { label: 'Submitted',    value: submitted,      icon: '✅', color: '#22c55e' },
-          { label: 'Pending',      value: depts.length - submitted, icon: '⏳', color: '#fbbf24' },
-          { label: 'HODs Created', value: hods.length,   icon: '👤', color: '#38bdf8' },
-          { label: 'No HOD Yet',   value: noHOD,         icon: '⚠️', color: '#f97316' },
-        ].map(({ label, value, icon, color }) => (
-          <Card key={label} style={{ padding: '18px 20px' }}>
-            <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
-            <div style={{ fontSize: 30, fontWeight: 800, fontFamily: 'monospace', color, marginBottom: 4 }}>{value}</div>
-            <div style={{ fontSize: 12, color: '#475569', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{label}</div>
-          </Card>
-        ))}
+    <div style={S.page}>
+      {/* ── Top bar ─────────────────────────────────────────────────────── */}
+      <div style={S.topBar}>
+        <div style={S.logo}>
+          <span style={S.logoIcon}>🎓</span>
+          <div>
+            <div style={S.logoTitle}>NAAC AQAR</div>
+            <div style={S.logoSub}>Admin Panel</div>
+          </div>
+        </div>
+
+        {/* Year selector */}
+        <div style={S.yearBox}>
+          <label style={S.yearLabel}>AQAR Year</label>
+          <select
+            value={year}
+            onChange={e => handleYearChange(e.target.value)}
+            style={S.yearSelect}
+          >
+            {AQAR_YEARS.map(y => <option key={y}>{y}</option>)}
+          </select>
+        </div>
+
+        <button onClick={() => { logout(); navigate('/login') }} style={S.logoutBtn}>
+          Logout
+        </button>
       </div>
 
-      {/* Overall submission progress */}
-      <Card style={{ padding: 24 }}>
-        <div style={{ fontSize: 10, color: '#475569', letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700, marginBottom: 12, fontFamily: 'monospace' }}>
-          OVERALL SUBMISSION PROGRESS
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-          <span style={{ fontSize: 13, color: '#94a3b8', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-            {submitted} of {depts.length} departments submitted
-          </span>
-          <span style={{ fontFamily: 'monospace', fontSize: 16, color: pct === 100 ? '#22c55e' : '#818cf8', fontWeight: 700 }}>{pct}%</span>
-        </div>
-        <ProgressBar pct={pct} color={pct === 100 ? '#22c55e' : '#818cf8'} height={8} />
-      </Card>
+      <div style={S.body}>
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <div style={S.header}>
+          <div>
+            <h1 style={S.h1}>Admin Overview</h1>
+            <p style={S.sub}>Viewing: <strong>{year}</strong> — {departments.length} departments</p>
+          </div>
 
-      {/* Department cards */}
-      <Card style={{ padding: 24 }}>
-        <div style={{ fontSize: 10, color: '#475569', letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700, marginBottom: 16, fontFamily: 'monospace' }}>
-          ALL DEPARTMENTS
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {depts.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px', color: '#334155', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-              No departments yet. Go to Departments to add them.
+          {/* ── Combined Report buttons (Feature 1) ─────────────────────── */}
+          <div style={S.combinedRow}>
+            <div style={S.combinedLabel}>Combined Institution Report</div>
+            <div style={S.combinedBtns}>
+              <button
+                onClick={() => openCombinedReport('pdf', year)}
+                style={S.pdfBtn}
+              >
+                📄 Download PDF
+              </button>
+              <button
+                onClick={() => openCombinedReport('excel', year)}
+                style={S.xlBtn}
+              >
+                📊 Download Excel
+              </button>
             </div>
-          ) : depts.map(dept => (
-            <div key={dept.id} style={{
-              background: '#060d18', border: '1px solid #1e293b',
-              borderRadius: 10, padding: '14px 18px',
-              display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-            }}>
-              {/* Status dot */}
-              <div style={{
-                width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                background: dept.is_submitted ? '#22c55e' : '#334155',
-                boxShadow: dept.is_submitted ? '0 0 6px #22c55e80' : 'none',
-              }} />
-
-              {/* Dept name */}
-              <div style={{ flex: 1, minWidth: 120 }}>
-                <div style={{ fontSize: 14, color: '#f1f5f9', fontWeight: 600, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                  {dept.name}
-                </div>
-                <div style={{ fontSize: 11, color: streamColor(dept.stream), fontFamily: 'monospace', fontWeight: 700 }}>
-                  {dept.stream_display}
-                </div>
-              </div>
-
-              {/* HOD badge */}
-              <div style={{ minWidth: 120 }}>
-                {dept.hod_username ? (
-                  <span style={{ fontSize: 11, color: '#38bdf8', fontFamily: 'monospace' }}>
-                    👤 {dept.hod_username}
-                  </span>
-                ) : (
-                  <span style={{ fontSize: 11, color: '#f97316', fontFamily: 'monospace' }}>⚠ No HOD</span>
-                )}
-              </div>
-
-              {/* Submission status */}
-              <div style={{ minWidth: 100, textAlign: 'right' }}>
-                {dept.is_submitted ? (
-                  <div>
-                    <span style={{ fontSize: 11, color: '#22c55e', fontFamily: 'monospace' }}>✓ Submitted</span>
-                    {dept.submitted_at && (
-                      <div style={{ fontSize: 9, color: '#334155' }}>
-                        {new Date(dept.submitted_at).toLocaleDateString()}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <span style={{ fontSize: 11, color: '#475569', fontFamily: 'monospace' }}>○ Pending</span>
-                )}
-              </div>
-
-              {/* Actions */}
-               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-           onClick={() => onNavigateDept(dept)}
-           style={{ padding: '6px 14px', borderRadius: 6, background: '#0a1929', border: '1px solid #1e3a5f', color: '#7dd3fc', cursor: 'pointer', fontSize: 12, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 600 }}
-         >
-           View Data
-         </button>
-         {dept.is_submitted && (
-           <button
-             onClick={() => handleUnlock(dept)}
-             style={{ padding: '6px 14px', borderRadius: 6, background: '#1a0e00', border: '1px solid #92400e', color: '#fbbf24', cursor: 'pointer', fontSize: 12, fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-           >
-             Unlock
-           </button>
-         )}
-       </div>
-       {dept.is_submitted && (
-         <AdminReportDownload deptId={dept.id} onToast={onToast} />
-       )}
-     </div>
-            </div>
-          ))}
+          </div>
         </div>
-      </Card>
+
+        {/* ── Department grid ──────────────────────────────────────────────── */}
+        {loading ? (
+          <div style={S.loading}>Loading departments for {year}…</div>
+        ) : (
+          <div style={S.grid}>
+            {departments.map(dept => (
+              <DeptCard
+                key={dept.department_id}
+                dept={dept}
+                year={year}
+                onUnlock={handleUnlock}
+                unlocking={unlocking === dept.department_id}
+                onView={() => navigate(`/admin/departments/${dept.department_id}?year=${year}`)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
+}
+
+function DeptCard({ dept, year, onUnlock, unlocking, onView }) {
+  const { openReportDownload } = require('../../api/formApi')
+
+  return (
+    <div style={S.card}>
+      <div style={S.cardTop}>
+        <div>
+          <div style={S.cardName}>{dept.department_name}</div>
+          <div style={S.cardMeta}>{dept.stream} · HOD: {dept.hod || '—'}</div>
+        </div>
+        <span style={{ ...S.badge, background: dept.is_submitted ? '#166534' : '#b91c1c' }}>
+          {dept.is_submitted ? '✓ Submitted' : 'Pending'}
+        </span>
+      </div>
+
+      {dept.submitted_at && (
+        <div style={S.submittedAt}>
+          Submitted: {new Date(dept.submitted_at).toLocaleDateString('en-IN')}
+        </div>
+      )}
+
+      <div style={S.cardActions}>
+        <button onClick={onView} style={S.viewBtn}>View Data</button>
+
+        {dept.is_submitted && (
+          <>
+            <button
+              onClick={() => openReportDownload(dept.department_id, 'pdf', year)}
+              style={S.dlBtn}
+            >
+              PDF
+            </button>
+            <button
+              onClick={() => openReportDownload(dept.department_id, 'excel', year)}
+              style={S.dlBtn}
+            >
+              Excel
+            </button>
+            <button
+              onClick={() => onUnlock(dept.department_id)}
+              disabled={unlocking}
+              style={S.unlockBtn}
+            >
+              {unlocking ? '…' : 'Unlock'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const S = {
+  page:        { minHeight: '100vh', background: '#f0f2f5', fontFamily: 'system-ui, sans-serif' },
+  topBar:      { background: '#1a2744', padding: '0.8rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' },
+  logo:        { display: 'flex', alignItems: 'center', gap: '0.6rem', flex: 1 },
+  logoIcon:    { fontSize: '1.6rem' },
+  logoTitle:   { color: '#fff', fontWeight: 700, fontSize: '1rem' },
+  logoSub:     { color: '#94a3b8', fontSize: '0.75rem' },
+  yearBox:     { display: 'flex', alignItems: 'center', gap: '0.5rem' },
+  yearLabel:   { color: '#94a3b8', fontSize: '0.8rem' },
+  yearSelect:  { padding: '0.35rem 0.6rem', borderRadius: '6px', border: 'none', fontSize: '0.85rem', background: '#2d4a8a', color: '#fff', cursor: 'pointer' },
+  logoutBtn:   { background: '#c1272d', color: '#fff', border: 'none', padding: '0.4rem 1rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' },
+  body:        { padding: '1.5rem' },
+  header:      { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' },
+  h1:          { margin: 0, fontSize: '1.6rem', color: '#1a2744' },
+  sub:         { margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.9rem' },
+  combinedRow: { background: '#fff', border: '2px solid #2d4a8a', borderRadius: '10px', padding: '0.75rem 1rem' },
+  combinedLabel:{ fontSize: '0.8rem', color: '#2d4a8a', fontWeight: 700, marginBottom: '0.5rem' },
+  combinedBtns:{ display: 'flex', gap: '0.5rem' },
+  pdfBtn:      { background: '#c1272d', color: '#fff', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 },
+  xlBtn:       { background: '#166534', color: '#fff', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 },
+  loading:     { textAlign: 'center', padding: '3rem', color: '#64748b' },
+  grid:        { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' },
+  card:        { background: '#fff', borderRadius: '10px', padding: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
+  cardTop:     { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.4rem' },
+  cardName:    { fontWeight: 700, color: '#1a2744', fontSize: '0.95rem' },
+  cardMeta:    { color: '#64748b', fontSize: '0.78rem', marginTop: '0.1rem' },
+  badge:       { color: '#fff', padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap' },
+  submittedAt: { fontSize: '0.75rem', color: '#64748b', marginBottom: '0.5rem' },
+  cardActions: { display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.75rem' },
+  viewBtn:     { background: '#2d4a8a', color: '#fff', border: 'none', padding: '0.35rem 0.7rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' },
+  dlBtn:       { background: '#0f766e', color: '#fff', border: 'none', padding: '0.35rem 0.5rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem' },
+  unlockBtn:   { background: '#d97706', color: '#fff', border: 'none', padding: '0.35rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.78rem' },
 }

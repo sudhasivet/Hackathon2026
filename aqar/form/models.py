@@ -22,17 +22,18 @@ class Department(models.Model):
 
 
 class SubmissionStatus(models.Model):
-    department   = models.OneToOneField(
-        Department, on_delete=models.CASCADE, related_name='submission'
+    department   = models.ForeignKey(
+        'Department', on_delete=models.CASCADE, related_name='submissions'
     )
+    aqar_year    = models.CharField(max_length=10, default='2023-24', db_index=True)
     is_submitted = models.BooleanField(default=False)
     submitted_at = models.DateTimeField(null=True, blank=True)
     report_excel = models.CharField(max_length=500, blank=True, default='')
     report_pdf   = models.CharField(max_length=500, blank=True, default='')
-    
+    class Meta:
+        unique_together = ('department', 'aqar_year')
     def __str__(self):
-        return f"{self.department} — {'submitted' if self.is_submitted else 'draft'}"
-
+        return f"{self.department} — {self.aqar_year} — {'Submitted' if self.is_submitted else 'Pending'}"
 
 class InstitutionSettings(models.Model):
     user         = models.OneToOneField(User, on_delete=models.CASCADE, related_name='institution_settings')
@@ -60,10 +61,10 @@ class Document(models.Model):
         return f"{self.department} | {self.metric_id} — {self.original_name}"
 
 class MetricBase(models.Model):
-    department = models.ForeignKey(Department, on_delete=models.CASCADE)
-    aqar_year = models.CharField(max_length=10,default="2023-24")
-    class Meta:
-        abstract = True
+      department = models.ForeignKey('Department', on_delete=models.CASCADE)
+      aqar_year  = models.CharField(max_length=10, default='2023-24', db_index=True)
+      class Meta:
+          abstract = True
 
 
 class Metric_1_1(MetricBase):

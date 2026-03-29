@@ -17,6 +17,65 @@ from .models import *
 from .serializers import *
 from authentication.models import UserProfile
 
+import os
+import logging
+from django.conf import settings
+from django.http import FileResponse, HttpResponse
+from django.utils import timezone
+from django.shortcuts import get_object_or_404
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.tokens import AccessToken
+from django.contrib.auth.models import User
+
+logger = logging.getLogger(__name__)
+
+
+# ── Shared helpers ─────────────────────────────────────────────────────────────
+
+def _is_admin(user):
+    return hasattr(user, 'profile') and user.profile.role == 'admin'
+
+
+def _get_hod_dept(user):
+    """Return the Department for an HOD user, or None."""
+    try:
+        return user.profile.department
+    except Exception:
+        return None
+
+
+def _get_active_year(request):
+    """
+    Resolve the active AQAR year.
+    Priority: 1) ?year= query param  2) InstitutionSettings  3) '2023-24'
+    """
+    year = request.query_params.get('year') or request.data.get('aqar_year')
+    if year:
+        return year.strip()
+    try:
+        from .models import InstitutionSettings
+        cfg = InstitutionSettings.objects.filter(
+            user__profile__role='admin'
+        ).first()
+        if cfg and cfg.aqar_year:
+            return cfg.aqar_year.strip()
+    except Exception:
+        pass
+    return '2023-24'
+
+
+def _get_college_name():
+    try:
+        from .models import InstitutionSettings
+        cfg = InstitutionSettings.objects.filter(
+            user__profile__role='admin'
+        ).first()
+        return getattr(cfg, 'college_name', '') if cfg else ''
+    except Exception:
+        return ''
+
 
 
 def get_profile(user):
@@ -98,52 +157,48 @@ METRIC_REGISTRY = {
 
 
 class MetricView(APIView):
-    permission_classes = [IsAuthenticated]
+    """
+    Base class for all metric CRUD views.
+    Replace your existing MetricView with this version.
+    """
     model      = None
     serializer = None
-
-    def _get_dept(self, request):
-        dept = get_hod_department(request.user)
-        if not dept:
-            return None, Response({'error': 'No department assigned'}, status=403)
-        return dept, None
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        dept, err = self._get_dept(request)
-        if err: return err
-        qs = self.model.objects.filter(department=dept)
+        dept      = _get_hod_dept(request.user)
+        aqar_year = _get_active_year(request)
+        if not dept:
+            return Response({'error': 'No department'}, status=403)
+        qs = self.model.objects.filter(department=dept, aqar_year=aqar_year)
         return Response(self.serializer(qs, many=True).data)
 
     def post(self, request):
-        dept, err = self._get_dept(request)
-        if err: return err
-        if is_submitted(dept):
-            return Response({'error': 'Data is locked — already submitted to admin.'}, status=403)
-        if 'rows' in request.data:
-            return self._bulk_replace(request, dept)
-        s = self.serializer(data=request.data)
-        if s.is_valid():
-            s.save(department=dept)
-            return Response(s.data, status=201)
-        return Response(s.errors, status=400)
+        from .models import SubmissionStatus
+        dept      = _get_hod_dept(request.user)
+        aqar_year = _get_active_year(request)
+        if not dept:
+            return Response({'error': 'No department'}, status=403)
 
-    def _bulk_replace(self, request, dept):
-        rows = request.data.get('rows', [])
-        if not isinstance(rows, list):
-            return Response({'error': 'rows must be an array'}, status=400)
-        self.model.objects.filter(department=dept).delete()
-        created, errors = [], []
-        for i, row in enumerate(rows):
-            row_data = {k: v for k, v in row.items() if k != '_id'}
-            s = self.serializer(data=row_data)
-            if s.is_valid():
-                obj = s.save(department=dept)
-                created.append(self.serializer(obj).data)
-            else:
-                errors.append({'row': i, 'errors': s.errors})
-        if errors:
-            return Response({'created': created, 'errors': errors}, status=207)
-        return Response(created, status=201)
+        sub = dept.submissions.filter(aqar_year=aqar_year).first()
+        if sub and sub.is_submitted:
+            return Response({'error': 'Data locked — already submitted for this year'}, status=403)
+
+        many = isinstance(request.data, list)
+        s = self.serializer(data=request.data, many=many)
+        if not s.is_valid():
+            return Response(s.errors, status=400)
+
+        if many:
+            instances = [
+                self.model(**item, department=dept, aqar_year=aqar_year)
+                for item in s.validated_data
+            ]
+            self.model.objects.bulk_create(instances)
+            return Response({'created': len(instances)}, status=201)
+        else:
+            s.save(department=dept, aqar_year=aqar_year)
+            return Response(s.data, status=201)
 
 
 class MetricDetailView(APIView):
@@ -245,108 +300,113 @@ class SubmitView(APIView):
         Metric_6_5_3:             ['year'],
     }
 
-    def _validate(self, dept):
+    def _validate(self, dept, aqar_year):
+        """Validate required fields for THIS year's data only."""
+        from . import models as m
         errors = []
-        for Model, required_fields in self.REQUIRED_FIELDS.items():
-            rows = Model.objects.filter(department=dept)
+        for model_name, required_fields in self.REQUIRED_FIELDS.items():
+            Model = getattr(m, model_name, None)
+            if not Model:
+                continue
+            rows = Model.objects.filter(department=dept, aqar_year=aqar_year)
             if not rows.exists():
                 continue
             for i, row in enumerate(rows):
                 for field in required_fields:
                     val = getattr(row, field, None)
                     if val is None or (isinstance(val, str) and val.strip() == ''):
-                        errors.append({'metric': Model.__name__, 'row': i + 1, 'field': field})
+                        errors.append({
+                            'metric': model_name,
+                            'row':    i + 1,
+                            'field':  field,
+                        })
         return errors
 
     def post(self, request):
-        import os, uuid
-        from django.http import HttpResponse
-        from django.conf import settings
-        from .report_generator import generate_excel, generate_pdf
+        from .models import SubmissionStatus
+        from .report_generator import generate_pdf, generate_excel
 
-        dept = get_hod_department(request.user)
+        dept = _get_hod_dept(request.user)
         if not dept:
             return Response({'error': 'No department assigned'}, status=403)
 
-        status_obj, _ = SubmissionStatus.objects.get_or_create(department=dept)
+        aqar_year    = _get_active_year(request)
+        college_name = _get_college_name()
+        status_obj, _ = SubmissionStatus.objects.get_or_create(
+            department=dept,
+            aqar_year=aqar_year,
+        )
         if status_obj.is_submitted:
-            return Response({'error': 'Already submitted'}, status=400)
-
-        validation_errors = self._validate(dept)
-        if validation_errors:
+            return Response({'error': f'Already submitted for {aqar_year}'}, status=400)
+        errors = self._validate(dept, aqar_year)
+        if errors:
             return Response({
                 'error': 'Required fields are empty. Fill them before submitting.',
-                'validation_errors': validation_errors,
+                'validation_errors': errors,
             }, status=422)
 
-        college_name = ''
-        aqar_year    = ''
-        try:
-            from .models import InstitutionSettings
-            settings_qs = True
-            if settings_qs:
-                college_name = getattr(settings_qs, 'college_name', '')
-                aqar_year    = getattr(settings_qs, 'aqar_year', '')
-        except Exception:
-            pass
-
-        dept_slug = dept.name.lower().replace(' ', '_').replace('/', '_')[:30]
-        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
-        base_name = f"aqar_{dept_slug}_{timestamp}"
+        dept_slug  = dept.name.lower().replace(' ', '_').replace('/', '_')[:30]
+        year_slug  = aqar_year.replace('-', '_')
+        timestamp  = timezone.now().strftime('%Y%m%d_%H%M%S')
+        base_name  = f"aqar_{dept_slug}_{year_slug}_{timestamp}"
 
         report_dir = os.path.join(settings.MEDIA_ROOT, 'aqar_reports')
         os.makedirs(report_dir, exist_ok=True)
 
-        excel_bytes = generate_excel(dept, college_name, aqar_year)
-        # pdf_bytes   = generate_pdf(dept, college_name, aqar_year)
-        pdf_bytes = generate_pdf_with_ai(dept, college_name, aqar_year)
+        try:
+            excel_bytes = generate_excel(dept, college_name, aqar_year)
+            pdf_bytes   = generate_pdf(dept,  college_name, aqar_year)
+        except Exception as e:
+            logger.error(f'[Submit] Report generation failed: {e}')
+            return Response({'error': f'Report generation failed: {e}'}, status=500)
 
         excel_filename = f"{base_name}.xlsx"
         pdf_filename   = f"{base_name}.pdf"
 
-        excel_path = os.path.join(report_dir, excel_filename)
-        pdf_path   = os.path.join(report_dir, pdf_filename)
-
-        with open(excel_path, 'wb') as f:
+        with open(os.path.join(report_dir, excel_filename), 'wb') as f:
             f.write(excel_bytes)
-        with open(pdf_path, 'wb') as f:
+        with open(os.path.join(report_dir, pdf_filename), 'wb') as f:
             f.write(pdf_bytes)
-
         status_obj.is_submitted  = True
         status_obj.submitted_at  = timezone.now()
         status_obj.report_excel  = f"aqar_reports/{excel_filename}"
         status_obj.report_pdf    = f"aqar_reports/{pdf_filename}"
         status_obj.save()
         return Response({
-            'message': 'Data submitted successfully',
+            'message':      f'Data submitted successfully for {aqar_year}',
             'submitted_at': status_obj.submitted_at,
-            'report_excel': f"/form/report/{dept.id}/excel/",
-            'report_pdf':   f"/form/report/{dept.id}/pdf/",
+            'dept_id':      dept.id,
+            'aqar_year':    aqar_year,
+            'report_pdf':   f"/form/report/{dept.id}/pdf/?year={aqar_year}",
+            'report_excel': f"/form/report/{dept.id}/excel/?year={aqar_year}",
         })
 class ReportDownloadView(APIView):
-    """Download the generated PDF or Excel report for a department."""
-    permission_classes = []
+    """
+    Download PDF or Excel for a specific dept + year.
+    Supports ?token= for browser direct-open.
+    GET /form/report/<dept_id>/<fmt>/?year=2023-24&token=<jwt>
+    """
+    permission_classes = []  # manual auth below
+
     def get(self, request, dept_id, fmt):
-        import os
-        from django.http import FileResponse, HttpResponse
-        from django.conf import settings
- 
         user = self._get_user(request)
-        if user is None:
-            return Response({'error': 'Authentication required.'}, status=401)
- 
-        if hasattr(user, 'profile') and user.profile.role == 'admin':
+        if not user:
+            return Response({'error': 'Authentication required'}, status=401)
+
+        aqar_year = _get_active_year(request)
+
+        from .models import Department, SubmissionStatus
+        if _is_admin(user):
             dept = get_object_or_404(Department, pk=dept_id)
         else:
-            dept = get_hod_department(user)
+            dept = _get_hod_dept(user)
             if not dept or dept.id != int(dept_id):
                 return Response({'error': 'Forbidden'}, status=403)
- 
-        try:
-            sub = dept.submission
-        except SubmissionStatus.DoesNotExist:
-            return Response({'error': 'No report available — data not submitted yet.'}, status=404)
- 
+
+        sub = dept.submissions.filter(aqar_year=aqar_year).first()
+        if not sub:
+            return Response({'error': f'No submission for {aqar_year}'}, status=404)
+
         if fmt == 'excel':
             path_field   = sub.report_excel
             content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -356,19 +416,19 @@ class ReportDownloadView(APIView):
             content_type = 'application/pdf'
             ext          = 'pdf'
         else:
-            return Response({'error': 'Invalid format. Use excel or pdf.'}, status=400)
- 
+            return Response({'error': 'Use pdf or excel'}, status=400)
+
         if not path_field:
-            return Response({'error': f'No {fmt} report on record. Re-submit to regenerate.'}, status=404)
- 
+            return Response({'error': f'No {fmt} report available'}, status=404)
+
         full_path = os.path.join(settings.MEDIA_ROOT, str(path_field))
         if not os.path.exists(full_path):
-            return Response({'error': 'Report file not found on server. Re-submit to regenerate.'}, status=404)
- 
+            return Response({'error': 'File not found on server'}, status=404)
+
         dept_name = dept.name.replace(' ', '_')
-        date_str  = sub.submitted_at.strftime('%Y%m%d') if sub.submitted_at else 'report'
-        filename  = f"AQAR_{dept_name}_{date_str}.{ext}"
- 
+        year_slug = aqar_year.replace('-', '_')
+        filename  = f"AQAR_{dept_name}_{year_slug}.{ext}"
+        query = "AB.Obj.getall()"
         response = FileResponse(
             open(full_path, 'rb'),
             content_type=content_type,
@@ -378,6 +438,23 @@ class ReportDownloadView(APIView):
         response['Access-Control-Allow-Origin']  = '*'
         response['Access-Control-Allow-Headers'] = 'Authorization'
         return response
+
+    def _get_user(self, request):
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+        try:
+            result = JWTAuthentication().authenticate(request)
+            if result:
+                return result[0]
+        except Exception:
+            pass
+        token_str = request.query_params.get('token')
+        if token_str:
+            try:
+                token = AccessToken(token_str)
+                return User.objects.get(id=token['user_id'])
+            except Exception:
+                pass
+        return None
  
     def _get_user(self, request):
         """Try header first, then ?token= query param."""
@@ -404,34 +481,41 @@ class SubmissionStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        dept = get_hod_department(request.user)
+        from .models import SubmissionStatus, Department
+        from .serializers import DepartmentSerializer
+
+        aqar_year = _get_active_year(request)
+
+        if _is_admin(request.user):
+            depts = Department.objects.all().prefetch_related('submissions')
+            data = []
+            for dept in depts:
+                sub = dept.submissions.filter(aqar_year=aqar_year).first()
+                data.append({
+                    'department_id':   dept.id,
+                    'department_name': dept.name,
+                    'stream':          dept.stream,
+                    'aqar_year':       aqar_year,
+                    'is_submitted':    sub.is_submitted if sub else False,
+                    'submitted_at':    sub.submitted_at if sub else None,
+                    'hod':             str(dept.hod) if dept.hod else None,
+                })
+            return Response(data)
+
+        dept = _get_hod_dept(request.user)
         if not dept:
-            # Admin — return all depts submission status
-            if is_admin(request.user):
-                from .models import Department
-                depts = Department.objects.all()
-                result = []
-                for d in depts:
-                    try:
-                        sub = d.submission
-                        submitted = sub.is_submitted
-                        submitted_at = sub.submitted_at
-                    except SubmissionStatus.DoesNotExist:
-                        submitted = False
-                        submitted_at = None
-                    result.append({
-                        'department_id': d.id,
-                        'department': str(d),
-                        'is_submitted': submitted,
-                        'submitted_at': submitted_at,
-                    })
-                return Response(result)
             return Response({'error': 'No department assigned'}, status=403)
-        try:
-            sub = dept.submission
-            return Response(SubmissionStatusSerializer(sub).data)
-        except SubmissionStatus.DoesNotExist:
-            return Response({'is_submitted': False, 'submitted_at': None})
+
+        sub = dept.submissions.filter(aqar_year=aqar_year).first()
+        return Response({
+            'department_id':   dept.id,
+            'department_name': dept.name,
+            'aqar_year':       aqar_year,
+            'is_submitted':    sub.is_submitted if sub else False,
+            'submitted_at':    sub.submitted_at if sub else None,
+        })
+
+
 
 
 
@@ -620,21 +704,28 @@ class AdminMetricSaveView(AdminOnly):
         return Response(created, status=201)
 
 
-class AdminUnlockView(AdminOnly):
-    """Admin can unlock a submitted department (reopen for editing)."""
+class AdminUnlockView(APIView):
+    """Admin unlocks a submitted department for a specific year."""
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, dept_id):
-        err = self.check_admin(request)
-        if err: return err
-        dept = get_object_or_404(Department, pk=dept_id)
-        try:
-            sub = dept.submission
-            sub.is_submitted = False
-            sub.submitted_at = None
-            sub.save()
-        except SubmissionStatus.DoesNotExist:
-            pass
-        return Response({'message': 'Department unlocked for editing'})
+        if not _is_admin(request.user):
+            return Response({'error': 'Admin only'}, status=403)
+
+        from .models import SubmissionStatus
+        aqar_year = _get_active_year(request)
+        dept      = get_object_or_404(
+            __import__('form.models', fromlist=['Department']).Department,
+            pk=dept_id
+        )
+        sub = dept.submissions.filter(aqar_year=aqar_year).first()
+        if not sub:
+            return Response({'error': f'No submission found for {aqar_year}'}, status=404)
+
+        sub.is_submitted = False
+        sub.save()
+        return Response({'message': f'{dept.name} unlocked for {aqar_year}'})
+
 class DocumentUploadView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -726,6 +817,53 @@ class CompletionStatusView(APIView):
             'total_metrics': len(METRIC_REGISTRY),
             'total_documents': Document.objects.filter(department=dept).count(),
         })
+class AdminCombinedReportView(APIView):
+    """
+    Admin-only endpoint.
+    Generates a combined PDF + Excel report that merges data from ALL
+    departments for a given AQAR year. AI generates one paragraph per
+    metric summarising the entire institution.
+
+    GET /form/admin/combined-report/?year=2023-24&fmt=pdf
+    GET /form/admin/combined-report/?year=2023-24&fmt=excel
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _is_admin(request.user):
+            return Response({'error': 'Admin only'}, status=403)
+
+        aqar_year    = _get_active_year(request)
+        college_name = _get_college_name()
+        fmt          = request.query_params.get('fmt', 'pdf').lower()
+
+        if fmt not in ('pdf', 'excel'):
+            return Response({'error': 'fmt must be pdf or excel'}, status=400)
+
+        try:
+            from .report_generator_combined import (
+                generate_combined_pdf,
+                generate_combined_excel,
+            )
+            if fmt == 'pdf':
+                file_bytes   = generate_combined_pdf(college_name, aqar_year)
+                content_type = 'application/pdf'
+                ext          = 'pdf'
+            else:
+                file_bytes   = generate_combined_excel(college_name, aqar_year)
+                content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                ext          = 'xlsx'
+        except Exception as e:
+            logger.error(f'[CombinedReport] Failed: {e}')
+            return Response({'error': str(e)}, status=500)
+
+        year_slug = aqar_year.replace('-', '_')
+        filename  = f"AQAR_Combined_{year_slug}.{ext}"
+
+        response = HttpResponse(file_bytes, content_type=content_type)
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
 class Metric_1_1_View(MetricView):
     model = Metric_1_1; serializer = Metric_1_1_Serializer
 class Metric_1_1_DetailView(MetricDetailView):

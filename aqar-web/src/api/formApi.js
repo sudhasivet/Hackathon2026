@@ -1,75 +1,8 @@
-// import axios from 'axios'
-
-// const BACKEND = 'https://naac-navigator.onrender.com'
-
-// const api = axios.create({ baseURL: BACKEND })
-
-// api.interceptors.request.use(config => {
-//   const token = localStorage.getItem('access')
-//   if (token) config.headers.Authorization = `Bearer ${token}`
-//   return config
-// })
-// const METRIC_ALIASES = {
-//   '1.2.2 , 1.2.3': '1-2-2',
-//   '1.2.3':          '1-2-2',
-//   '2.4.2':          '2-4-2',
-//   '3.4.3':          '3-4-3',
-// }
-// const slug = (metricId) => {
-//   if (METRIC_ALIASES[metricId]) return METRIC_ALIASES[metricId]
-//   return metricId.replace(/\./g, '-')
-// }
-// export const fetchAllResponses  = ()           => api.get('/form/responses/').then(r => r.data)
-// export const saveMetricRows     = (id, rows)   => api.post(`/form/${slug(id)}/`, { rows }).then(r => r.data)
-// export const addMetricRow       = (id, data)   => api.post(`/form/${slug(id)}/`, data).then(r => r.data)
-// export const updateMetricRow    = (id, pk, data) => api.put(`/form/${slug(id)}/${pk}/`, data).then(r => r.data)
-// export const deleteMetricRow    = (id, pk)     => api.delete(`/form/${slug(id)}/${pk}/`)
-
-// export const submitData         = ()           => api.post('/form/submit/').then(r => r.data)
-// export const fetchSubmissionStatus = ()        => api.get('/form/submission-status/').then(r => r.data)
-
-// export const uploadDocument = async (metricId, file) => {
-//   const fd = new FormData()
-//   fd.append('metric_id', metricId)
-//   fd.append('file', file)
-//   const r = await api.post('/form/document/upload/', fd, {
-//     headers: { 'Content-Type': 'multipart/form-data' },
-//   })
-//   return r.data
-// }
-// export const fetchDocuments  = (metricId) => api.get(`/form/documents/${encodeURIComponent(metricId)}/`).then(r => r.data)
-// export const deleteDocument  = (docId)    => api.delete(`/form/document/${docId}/`)
-
-// export const fetchSettings   = ()     => api.get('/form/settings/').then(r => r.data)
-// export const saveSettings    = (data) => api.post('/form/settings/', data).then(r => r.data)
-// export const fetchCompletion = ()     => api.get('/form/completion/').then(r => r.data)
-
-// export const fetchDepartments   = ()           => api.get('/form/departments/').then(r => r.data)
-// export const createDepartment   = (data)       => api.post('/form/departments/', data).then(r => r.data)
-// export const updateDepartment   = (id, data)   => api.put(`/form/departments/${id}/`, data).then(r => r.data)
-// export const deleteDepartment   = (id)         => api.delete(`/form/departments/${id}/`)
-
-// export const fetchHODs          = ()           => api.get('/form/hods/').then(r => r.data)
-// export const createHOD          = (data)       => api.post('/form/hods/', data).then(r => r.data)
-// export const deleteHOD          = (id)         => api.delete(`/form/hods/${id}/`)
-
-// export const fetchDeptResponses = (deptId)     => api.get(`/form/admin/responses/${deptId}/`).then(r => r.data)
-// export const adminSaveMetric = async (deptId, metricId, rows) => {
-//   const metrics = metricId.includes(',')
-//     ? metricId.split(',').map(m => m.trim())
-//     : [metricId]
-
-//   for (const m of metrics) {
-//     await api.post(`/form/admin/responses/${deptId}/${slug(m)}/`, { rows })
-//   }
-// }
-// export const adminUnlockDept    = (deptId)     => api.post(`/form/admin/unlock/${deptId}/`).then(r => r.data)
-// export const fetchAllSubmissions = ()          => api.get('/form/submission-status/').then(r => r.data)
-// export default api
-
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '/api' })
+const BACKEND = import.meta.env.VITE_API_URL || 'https://naac-navigator.onrender.com'
+
+const api = axios.create({ baseURL: BACKEND })
 
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('access')
@@ -77,10 +10,12 @@ api.interceptors.request.use(config => {
   return config
 })
 
-// ── Metric ID alias map (fixes 404 for combined metric slugs) ─────────────────
+// ── Metric ID alias map ───────────────────────────────────────────────────────
 const METRIC_ALIASES = {
   '1.2.2 , 1.2.3': '1-2-2',
   '1.2.3':          '1-2-2',
+  '2.4.2':          '2-4-2',
+  '3.4.3':          '3-4-3',
 }
 
 const slug = (metricId) => {
@@ -88,42 +23,140 @@ const slug = (metricId) => {
   return metricId.replace(/\./g, '-')
 }
 
-// ── HOD — read metric rows for THIS year ─────────────────────────────────────
-export const fetchMetricRows = (metricSlug, year) =>
-  api.get(`/form/${slug(metricSlug)}/`, { params: { year } })
+// ── Active year helper ────────────────────────────────────────────────────────
+const getYear = () => localStorage.getItem('aqar_year') || '2023-24'
 
-// ── HOD — save rows (stamped with year on backend) ────────────────────────────
-export const saveMetricRows = (metricSlug, rows, year) =>
-  api.post(`/form/${slug(metricSlug)}/`, rows, { params: { year } })
+// ═══════════════════════════════════════════════════════════════════════════════
+// HOD — metric CRUD (year-aware)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// ── HOD — delete a single row ─────────────────────────────────────────────────
-export const deleteMetricRow = (metricSlug, id, year) =>
-  api.delete(`/form/${slug(metricSlug)}/${id}/`, { params: { year } })
+export const fetchMetricRows = (metricSlug, year = getYear()) =>
+  api.get(`/form/${slug(metricSlug)}/`, { params: { year } }).then(r => r.data)
 
-// ── Admin — read dept responses for THIS year ─────────────────────────────────
-export const fetchAdminResponses = (deptId, metricSlug, year) =>
-  api.get(`/form/admin/responses/${deptId}/${slug(metricSlug)}/`, { params: { year } })
+export const saveMetricRows = (metricSlug, rows, year = getYear()) =>
+  api.post(`/form/${slug(metricSlug)}/`, rows, { params: { year } }).then(r => r.data)
 
-// ── Admin — overwrite dept metric for THIS year ───────────────────────────────
-export const adminSaveMetric = (deptId, metricSlug, rows, year) =>
-  api.post(`/form/admin/responses/${deptId}/${slug(metricSlug)}/`, rows, { params: { year } })
+export const addMetricRow = (metricSlug, data, year = getYear()) =>
+  api.post(`/form/${slug(metricSlug)}/`, data, { params: { year } }).then(r => r.data)
 
-// ── Submit (HOD) ──────────────────────────────────────────────────────────────
-export const submitData = (year) =>
-  api.post('/form/submit/', { aqar_year: year })
+export const updateMetricRow = (metricSlug, pk, data, year = getYear()) =>
+  api.put(`/form/${slug(metricSlug)}/${pk}/`, data, { params: { year } }).then(r => r.data)
 
-// ── Submission status ─────────────────────────────────────────────────────────
-export const fetchSubmissionStatus = (year) =>
-  api.get('/form/submission-status/', { params: { year } })
+export const deleteMetricRow = (metricSlug, pk, year = getYear()) =>
+  api.delete(`/form/${slug(metricSlug)}/${pk}/`, { params: { year } })
 
-// ── Admin unlock ──────────────────────────────────────────────────────────────
-export const adminUnlock = (deptId, year) =>
-  api.post(`/form/admin/unlock/${deptId}/`, { aqar_year: year })
+// ═══════════════════════════════════════════════════════════════════════════════
+// HOD — submit + status
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// ── Report download (browser direct-open with ?token=) ────────────────────────
-const BACKEND = import.meta.env.VITE_API_URL || 'https://naac-navigator.onrender.com'
+export const submitData = (year = getYear()) =>
+  api.post('/form/submit/', { aqar_year: year }).then(r => r.data)
 
-export const openReportDownload = (deptId, fmt, year) => {
+export const fetchSubmissionStatus = (year = getYear()) =>
+  api.get('/form/submission-status/', { params: { year } }).then(r => r.data)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HOD — responses (all metrics at once)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const fetchAllResponses = (year = getYear()) =>
+  api.get('/form/responses/', { params: { year } }).then(r => r.data)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HOD — documents
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const uploadDocument = async (metricId, file) => {
+  const fd = new FormData()
+  fd.append('metric_id', metricId)
+  fd.append('file', file)
+  const r = await api.post('/form/document/upload/', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return r.data
+}
+
+export const fetchDocuments = (metricId) =>
+  api.get(`/form/documents/${encodeURIComponent(metricId)}/`).then(r => r.data)
+
+export const deleteDocument = (docId) =>
+  api.delete(`/form/document/${docId}/`)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Settings + Completion
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const fetchSettings = () =>
+  api.get('/form/settings/').then(r => r.data)
+
+export const saveSettings = (data) =>
+  api.post('/form/settings/', data).then(r => r.data)
+
+export const fetchCompletion = (year = getYear()) =>
+  api.get('/form/completion/', { params: { year } }).then(r => r.data)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Admin — departments
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const fetchDepartments = () =>
+  api.get('/form/departments/').then(r => r.data)
+
+export const createDepartment = (data) =>
+  api.post('/form/departments/', data).then(r => r.data)
+
+export const updateDepartment = (id, data) =>
+  api.put(`/form/departments/${id}/`, data).then(r => r.data)
+
+export const deleteDepartment = (id) =>
+  api.delete(`/form/departments/${id}/`)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Admin — HOD accounts
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const fetchHODs = () =>
+  api.get('/form/hods/').then(r => r.data)
+
+export const createHOD = (data) =>
+  api.post('/form/hods/', data).then(r => r.data)
+
+export const deleteHOD = (id) =>
+  api.delete(`/form/hods/${id}/`)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Admin — dept responses + unlock
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const fetchDeptResponses = (deptId, year = getYear()) =>
+  api.get(`/form/admin/responses/${deptId}/`, { params: { year } }).then(r => r.data)
+
+export const fetchAdminResponses = (deptId, metricSlug, year = getYear()) =>
+  api.get(`/form/admin/responses/${deptId}/${slug(metricSlug)}/`, { params: { year } }).then(r => r.data)
+
+export const adminSaveMetric = async (deptId, metricId, rows, year = getYear()) => {
+  const metrics = metricId.includes(',')
+    ? metricId.split(',').map(m => m.trim())
+    : [metricId]
+  for (const m of metrics) {
+    await api.post(`/form/admin/responses/${deptId}/${slug(m)}/`, rows, { params: { year } })
+  }
+}
+
+export const adminUnlockDept = (deptId, year = getYear()) =>
+  api.post(`/form/admin/unlock/${deptId}/`, { aqar_year: year }).then(r => r.data)
+
+// Keep old name as alias so any component using it still works
+export const adminUnlock = adminUnlockDept
+
+export const fetchAllSubmissions = (year = getYear()) =>
+  api.get('/form/submission-status/', { params: { year } }).then(r => r.data)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Report downloads (browser direct-open with ?token= — no fetch/Blob needed)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const openReportDownload = (deptId, fmt, year = getYear()) => {
   const token = localStorage.getItem('access')
   window.open(
     `${BACKEND}/form/report/${deptId}/${fmt}/?year=${year}&token=${token}`,
@@ -131,8 +164,7 @@ export const openReportDownload = (deptId, fmt, year) => {
   )
 }
 
-// ── Admin combined report download ────────────────────────────────────────────
-export const openCombinedReport = (fmt, year) => {
+export const openCombinedReport = (fmt, year = getYear()) => {
   const token = localStorage.getItem('access')
   window.open(
     `${BACKEND}/form/admin/combined-report/?fmt=${fmt}&year=${year}&token=${token}`,

@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 # ── Reuse constants + registry from the dept report generator ─────────────────
 from .report_generator import (
     METRIC_META, CRITERIA_ORDER,
-    _build_prompt, _page_cb,
     C_DARK, C_MID, C_LIGHT, C_ACCENT, C_WHITE, C_GREY, C_AI_BG, PAGE_W,
 )
 

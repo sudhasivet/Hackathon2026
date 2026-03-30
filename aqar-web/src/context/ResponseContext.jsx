@@ -6,50 +6,79 @@ import {
   uploadDocument, deleteDocument,
   fetchSettings, saveSettings as apiSaveSettings,
   fetchSubmissionStatus, submitData,
+  openReportDownload,
 } from '../api/formApi'
-import api from '../api/OnlyApi'
+
 export const ResponseContext = createContext()
 
 export function ResponseProvider({ children }) {
   const { user, isHOD } = useAuth()
 
-  const [responses,    setResponses]    = useState(initResponses)
-  const [collegeName,  setCollegeName]  = useState('Your Institution')
-  const [aqarYear,     setAqarYear]     = useState('2023-24')
-  const [loading,      setLoading]      = useState(false)
-  const [syncError,    setSyncError]    = useState(null)
-  const [isSubmitted,  setIsSubmitted]  = useState(false)
-  const [submittedAt,  setSubmittedAt]  = useState(null)
+  const [responses,   setResponses]   = useState(initResponses)
+  const [collegeName, setCollegeName] = useState('Your Institution')
+  const [aqarYear,    setAqarYear]    = useState(
+    () => localStorage.getItem('aqar_year') || '2023-24'
+  )
+  const [loading,     setLoading]     = useState(false)
+  const [syncError,   setSyncError]   = useState(null)
+  const [isSubmitted, setIsSubmitted] = useState(false)
+  const [submittedAt, setSubmittedAt] = useState(null)
 
+  // ── Keep localStorage in sync with state ──────────────────────────────────
+  useEffect(() => {
+    localStorage.setItem('aqar_year', aqarYear)
+  }, [aqarYear])
+
+  // ── Load data on mount (HOD only) ─────────────────────────────────────────
   useEffect(() => {
     if (!user || !isHOD) return
     setLoading(true)
     setSyncError(null)
 
-    Promise.all([fetchAllResponses(), fetchSettings(), fetchSubmissionStatus()])
+    Promise.all([
+      fetchAllResponses(aqarYear),
+      fetchSettings(),
+      fetchSubmissionStatus(aqarYear),
+    ])
       .then(([serverData, serverSettings, subStatus]) => {
-        if (serverData && typeof serverData === 'object') {
+
+        // ── Merge server rows into local state ──────────────────────────────
+        // fetchAllResponses returns { metricId: [...rows], ... }
+        // Guard against unexpected shapes (array, null, etc.)
+        if (serverData && typeof serverData === 'object' && !Array.isArray(serverData)) {
           setResponses(prev => {
             const next = { ...prev }
             Object.entries(serverData).forEach(([metricId, rows]) => {
-              if (Array.isArray(rows) && rows.length > 0) {
-                next[metricId] = {
-                  ...prev[metricId],
-                  rows: rows.map((row, i) => ({ ...row, _id: row._id || row.id || Date.now() + i })),
-                  saved: true,
-                }
+              // rows must be an array — skip if not
+              if (!Array.isArray(rows) || rows.length === 0) return
+              next[metricId] = {
+                ...prev[metricId],
+                rows: rows.map((row, i) => ({
+                  ...row,
+                  _id: row._id || row.id || Date.now() + i,
+                })),
+                saved: true,
               }
             })
             return next
           })
         }
-        if (serverSettings?.college_name) setCollegeName(serverSettings.college_name)
-        if (serverSettings?.aqar_year)    setAqarYear(serverSettings.aqar_year)
 
-        // submission lock
-        if (subStatus?.is_submitted) {
+        // ── Settings ────────────────────────────────────────────────────────
+        if (serverSettings?.college_name) setCollegeName(serverSettings.college_name)
+        if (serverSettings?.aqar_year) {
+          setAqarYear(serverSettings.aqar_year)
+          localStorage.setItem('aqar_year', serverSettings.aqar_year)
+        }
+
+        // ── Submission lock ─────────────────────────────────────────────────
+        // subStatus is a plain object { is_submitted, submitted_at, ... }
+        if (subStatus && subStatus.is_submitted) {
           setIsSubmitted(true)
           setSubmittedAt(subStatus.submitted_at)
+        } else {
+          setIsSubmitted(false)
+          setSubmittedAt(null)
         }
       })
       .catch(err => {
@@ -57,8 +86,9 @@ export function ResponseProvider({ children }) {
         setSyncError('Could not load saved data — working offline.')
       })
       .finally(() => setLoading(false))
-  }, [user, isHOD])
+  }, [user, isHOD, aqarYear])   // re-run when year changes → fresh dataset
 
+  // ── Update a metric's local state ────────────────────────────────────────
   const updateResponse = useCallback((metricId, value) => {
     setResponses(prev => ({
       ...prev,
@@ -66,21 +96,23 @@ export function ResponseProvider({ children }) {
     }))
   }, [])
 
+  // ── Save one metric to server ─────────────────────────────────────────────
   const saveResponse = useCallback(async (metricId) => {
     if (isSubmitted) return { success: false, error: 'Data is locked after submission.' }
     const current = responses[metricId]
     if (!current) return { success: false }
     const rows = (current.rows || []).map(({ _id, ...rest }) => rest)
     try {
-      await saveMetricRows(metricId, rows)
+      await saveMetricRows(metricId, rows, aqarYear)
       setResponses(prev => ({ ...prev, [metricId]: { ...prev[metricId], saved: true } }))
       return { success: true }
     } catch (err) {
       console.error(`Save failed for ${metricId}:`, err)
       return { success: false, error: err.response?.data || 'Save failed' }
     }
-  }, [responses, isSubmitted])
+  }, [responses, isSubmitted, aqarYear])
 
+  // ── File upload / removal ─────────────────────────────────────────────────
   const uploadFile = useCallback(async (metricId, file) => {
     if (isSubmitted) return { success: false, error: 'Data is locked after submission.' }
     try {
@@ -117,9 +149,11 @@ export function ResponseProvider({ children }) {
     }
   }, [isSubmitted])
 
+  // ── College settings ──────────────────────────────────────────────────────
   const saveCollegeSettings = useCallback(async (name, year) => {
     setCollegeName(name)
     setAqarYear(year)
+    localStorage.setItem('aqar_year', year)
     try {
       await apiSaveSettings({ college_name: name, aqar_year: year })
       return { success: true }
@@ -128,65 +162,57 @@ export function ResponseProvider({ children }) {
     }
   }, [])
 
-const downloadReport = async (deptId, format = 'pdf') => {
-  try {
-    const res = await api.get(`/form/report/${deptId}/${format}/`, {
-      responseType: 'blob',
-    });
-
-    const blob = new Blob([res.data]);
-    const url = window.URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `AQAR_Report.${format}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error('Download failed:', err);
+  // ── Report download ───────────────────────────────────────────────────────
+  // Uses window.open with ?token= — no blob/fetch timeout issues on Render
+  const downloadReport = (deptId, format = 'pdf') => {
+    openReportDownload(deptId, format, aqarYear)
   }
-};
-const submitAllData = async () => {
-  try {
-    const res = await api.post('/form/submit/')
-    setIsSubmitted(true)
-    setSubmittedAt(res.data?.submitted_at || null)
-    return {
-      success: true,
-      report_pdf:   res.data?.report_pdf   || null,
-      report_excel: res.data?.report_excel || null,
-    }
-  } catch (err) {
-    const data = err.response?.data
-    // Pass validation errors back to caller if backend blocked submission
-    if (err.response?.status === 422) {
+
+  // ── Submit all data ───────────────────────────────────────────────────────
+  const submitAllData = async () => {
+    try {
+      const res = await submitData(aqarYear)
+      setIsSubmitted(true)
+      setSubmittedAt(res?.submitted_at || null)
+      return {
+        success:      true,
+        dept_id:      res?.dept_id      || null,
+        report_pdf:   res?.report_pdf   || null,
+        report_excel: res?.report_excel || null,
+      }
+    } catch (err) {
+      const data = err.response?.data
+      if (err.response?.status === 422) {
+        return {
+          success:           false,
+          error:             data?.error || 'Required fields are empty.',
+          validation_errors: data?.validation_errors || [],
+        }
+      }
       return {
         success: false,
-        error: data?.error || 'Required fields are empty.',
-        validation_errors: data?.validation_errors || [],
+        error:   data?.error || 'Submission failed. Please try again.',
       }
     }
-    return {
-      success: false,
-      error: data?.error || 'Submission failed. Please try again.',
-    }
   }
-}
-  const getTotalDocs = () => Object.values(responses).reduce((s, r) => s + (r?.documents?.length || 0), 0)
-  const getTotalRows = () => Object.values(responses).reduce((s, r) => s + (r?.rows?.length || 0), 0)
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const getTotalDocs = () =>
+    Object.values(responses).reduce((s, r) => s + (r?.documents?.length || 0), 0)
+  const getTotalRows = () =>
+    Object.values(responses).reduce((s, r) => s + (r?.rows?.length || 0), 0)
 
   return (
     <ResponseContext.Provider value={{
       responses, updateResponse, saveResponse,
       uploadFile, removeDocument,
-      collegeName, setCollegeName, aqarYear, setAqarYear,
+      collegeName, setCollegeName,
+      aqarYear,    setAqarYear,
       saveCollegeSettings,
       getTotalDocs, getTotalRows,
       loading, syncError,
-      isSubmitted, submittedAt, submitAllData,downloadReport
+      isSubmitted, submittedAt,
+      submitAllData, downloadReport,
     }}>
       {children}
     </ResponseContext.Provider>

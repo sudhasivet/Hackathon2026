@@ -26,7 +26,6 @@ from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework_simplejwt.tokens import AccessToken
 from django.contrib.auth.models import User
 
 logger = logging.getLogger(__name__)
@@ -819,27 +818,87 @@ class CompletionStatusView(APIView):
         })
 class AdminCombinedReportView(APIView):
     """
-    Admin-only endpoint.
-    Generates a combined PDF + Excel report that merges data from ALL
-    departments for a given AQAR year. AI generates one paragraph per
-    metric summarising the entire institution.
-
-    GET /form/admin/combined-report/?year=2023-24&fmt=pdf
-    GET /form/admin/combined-report/?year=2023-24&fmt=excel
+    Admin-only combined report for ALL departments.
+ 
+    Accepts authentication via:
+      1. Authorization: Bearer <token>  header  (API / Postman)
+      2. ?token=<access_token>          query   (browser window.open)
+ 
+    GET /form/admin/combined-report/?fmt=pdf&year=2023-24&token=<jwt>
+    GET /form/admin/combined-report/?fmt=excel&year=2023-24&token=<jwt>
     """
-    permission_classes = [IsAuthenticated]
-
+    permission_classes = []
+ 
+ 
+    def _get_user(self, request):
+        """Authenticate via Authorization header OR ?token= query param."""
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+        try:
+            result = JWTAuthentication().authenticate(request)
+            if result is not None:
+                return result[0]
+        except Exception:
+            pass
+        token_str = request.query_params.get('token')
+        if token_str:
+            try:
+                token = AccessToken(token_str)
+                return User.objects.get(id=token['user_id'])
+            except Exception:
+                pass
+        return None
+ 
+    def _is_admin(self, user):
+        return (
+            user is not None
+            and hasattr(user, 'profile')
+            and user.profile.role == 'admin'
+        )
+ 
+    def _get_year(self, request):
+        year = request.query_params.get('year', '').strip()
+        if year:
+            return year
+        try:
+            from .models import InstitutionSettings
+            cfg = InstitutionSettings.objects.filter(
+                user__profile__role='admin'
+            ).first()
+            if cfg and cfg.aqar_year:
+                return cfg.aqar_year.strip()
+        except Exception:
+            pass
+        return '2023-24'
+ 
+    def _get_college_name(self):
+        try:
+            from .models import InstitutionSettings
+            cfg = InstitutionSettings.objects.filter(
+                user__profile__role='admin'
+            ).first()
+            return getattr(cfg, 'college_name', '') if cfg else ''
+        except Exception:
+            return ''
+ 
     def get(self, request):
-        if not _is_admin(request.user):
-            return Response({'error': 'Admin only'}, status=403)
-
-        aqar_year    = _get_active_year(request)
-        college_name = _get_college_name()
+        user = self._get_user(request)
+        if user is None:
+            return Response(
+                {'error': 'Authentication credentials were not provided.'},
+                status=401
+            )
+        if not self._is_admin(user):
+            return Response(
+                {'error': 'Admin access required.'},
+                status=403
+            )
+        aqar_year    = self._get_year(request)
+        college_name = self._get_college_name()
         fmt          = request.query_params.get('fmt', 'pdf').lower()
-
+ 
         if fmt not in ('pdf', 'excel'):
             return Response({'error': 'fmt must be pdf or excel'}, status=400)
-
+ 
         try:
             from .report_generator_combined import (
                 generate_combined_pdf,
@@ -851,17 +910,22 @@ class AdminCombinedReportView(APIView):
                 ext          = 'pdf'
             else:
                 file_bytes   = generate_combined_excel(college_name, aqar_year)
-                content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                ext          = 'xlsx'
+                content_type = (
+                    'application/vnd.openxmlformats-officedocument'
+                    '.spreadsheetml.sheet'
+                )
+                ext = 'xlsx'
         except Exception as e:
-            logger.error(f'[CombinedReport] Failed: {e}')
-            return Response({'error': str(e)}, status=500)
-
+            logger.error(f'[CombinedReport] Generation failed: {e}', exc_info=True)
+            return Response({'error': f'Report generation failed: {e}'}, status=500)
+ 
         year_slug = aqar_year.replace('-', '_')
-        filename  = f"AQAR_Combined_{year_slug}.{ext}"
-
+        filename  = f'AQAR_Combined_{year_slug}.{ext}'
+ 
         response = HttpResponse(file_bytes, content_type=content_type)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Access-Control-Allow-Origin']  = '*'
+        response['Access-Control-Allow-Headers'] = 'Authorization'
         return response
 
 class Metric_1_1_View(MetricView):

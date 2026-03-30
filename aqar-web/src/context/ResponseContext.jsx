@@ -36,7 +36,7 @@ export function ResponseProvider({ children }) {
     setSyncError(null)
 
     Promise.all([
-      fetchAllResponses(aqarYear),
+      // fetchAllResponses(aqarYear),
       fetchSettings(),
       fetchSubmissionStatus(aqarYear),
     ])

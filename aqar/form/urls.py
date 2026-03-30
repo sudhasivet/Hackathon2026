@@ -108,7 +108,7 @@ urlpatterns = [
     path('document/upload/',           DocumentUploadView.as_view()),
     path('document/<int:doc_id>/',     DocumentDeleteView.as_view()),
     path('documents/<str:metric_id>/', DocumentListView.as_view()),
-    path('settings/',   InstitutionSettingsView.as_view()),
+    path('settings/',   InstitutionSett ingsView.as_view()),
     path('completion/', CompletionStatusView.as_view()),
     path('admin/combined-report/',            AdminCombinedReportView.as_view()),
 ]

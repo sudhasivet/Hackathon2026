@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # ── Reuse constants + registry from the dept report generator ─────────────────
 from .report_generator import (
-    METRIC_META, CRITERIA_ORDER, METRIC_TITLES,
+    METRIC_META, CRITERIA_ORDER,
     _build_prompt, _page_cb,
     C_DARK, C_MID, C_LIGHT, C_ACCENT, C_WHITE, C_GREY, C_AI_BG, PAGE_W,
 )
@@ -80,7 +80,7 @@ def _institution_summary(aqar_year):
 
 def _build_combined_prompt(metric_id, rows, headers, college_name, aqar_year):
     """Build a prompt that tells the AI this is institution-wide data."""
-    title = METRIC_TITLES.get(metric_id, f'NAAC AQAR Metric {metric_id}')
+    title = METRIC_META.get(metric_id, f'NAAC AQAR Metric {metric_id}')
 
     dept_names = list({r[0] for r in rows if r})
     n_depts    = len(dept_names)

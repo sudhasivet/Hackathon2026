@@ -24,32 +24,33 @@ export function ResponseProvider({ children }) {
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [submittedAt, setSubmittedAt] = useState(null)
 
-  // ── Keep localStorage in sync with state ──────────────────────────────────
+  // ── Keep localStorage in sync with year state ─────────────────────────────
   useEffect(() => {
     localStorage.setItem('aqar_year', aqarYear)
   }, [aqarYear])
 
-  // ── Load data on mount (HOD only) ─────────────────────────────────────────
+  // ── Load all data on mount and whenever year changes ──────────────────────
   useEffect(() => {
     if (!user || !isHOD) return
+
     setLoading(true)
     setSyncError(null)
 
+    // Reset to empty before loading new year — prevents stale data flash
+    setResponses(initResponses())
+
     Promise.all([
-      fetchAllResponses(aqarYear),
+      fetchAllResponses(aqarYear),      // ← FIX: was commented out
       fetchSettings(),
       fetchSubmissionStatus(aqarYear),
     ])
       .then(([serverData, serverSettings, subStatus]) => {
-
         // ── Merge server rows into local state ──────────────────────────────
         // fetchAllResponses returns { metricId: [...rows], ... }
-        // Guard against unexpected shapes (array, null, etc.)
         if (serverData && typeof serverData === 'object' && !Array.isArray(serverData)) {
           setResponses(prev => {
             const next = { ...prev }
             Object.entries(serverData).forEach(([metricId, rows]) => {
-              // rows must be an array — skip if not
               if (!Array.isArray(rows) || rows.length === 0) return
               next[metricId] = {
                 ...prev[metricId],
@@ -72,7 +73,6 @@ export function ResponseProvider({ children }) {
         }
 
         // ── Submission lock ─────────────────────────────────────────────────
-        // subStatus is a plain object { is_submitted, submitted_at, ... }
         if (subStatus && subStatus.is_submitted) {
           setIsSubmitted(true)
           setSubmittedAt(subStatus.submitted_at)
@@ -86,9 +86,9 @@ export function ResponseProvider({ children }) {
         setSyncError('Could not load saved data — working offline.')
       })
       .finally(() => setLoading(false))
-  }, [user, isHOD, aqarYear])   // re-run when year changes → fresh dataset
+  }, [user, isHOD, aqarYear])  // re-runs when year changes → fresh dataset per year
 
-  // ── Update a metric's local state ────────────────────────────────────────
+  // ── Update a metric's local state ─────────────────────────────────────────
   const updateResponse = useCallback((metricId, value) => {
     setResponses(prev => ({
       ...prev,
@@ -112,7 +112,7 @@ export function ResponseProvider({ children }) {
     }
   }, [responses, isSubmitted, aqarYear])
 
-  // ── File upload / removal ─────────────────────────────────────────────────
+  // ── File upload ───────────────────────────────────────────────────────────
   const uploadFile = useCallback(async (metricId, file) => {
     if (isSubmitted) return { success: false, error: 'Data is locked after submission.' }
     try {
@@ -135,6 +135,7 @@ export function ResponseProvider({ children }) {
     }
   }, [isSubmitted])
 
+  // ── File removal ──────────────────────────────────────────────────────────
   const removeDocument = useCallback(async (metricId, docId, isServerDoc) => {
     if (isSubmitted) return
     setResponses(prev => ({
@@ -149,7 +150,7 @@ export function ResponseProvider({ children }) {
     }
   }, [isSubmitted])
 
-  // ── College settings ──────────────────────────────────────────────────────
+  // ── College / year settings ───────────────────────────────────────────────
   const saveCollegeSettings = useCallback(async (name, year) => {
     setCollegeName(name)
     setAqarYear(year)
@@ -163,7 +164,6 @@ export function ResponseProvider({ children }) {
   }, [])
 
   // ── Report download ───────────────────────────────────────────────────────
-  // Uses window.open with ?token= — no blob/fetch timeout issues on Render
   const downloadReport = (deptId, format = 'pdf') => {
     openReportDownload(deptId, format, aqarYear)
   }

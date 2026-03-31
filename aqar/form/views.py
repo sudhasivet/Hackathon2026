@@ -683,6 +683,7 @@ class AdminMetricSaveView(AdminOnly):
 
     def post(self, request, dept_id, metric_slug):
         err = self.check_admin(request)
+        aqar_year = _get_active_year(request)
         if err: return err
         dept = get_object_or_404(Department, pk=dept_id)
         metric_id = metric_slug.replace('-', '.')
@@ -691,7 +692,7 @@ class AdminMetricSaveView(AdminOnly):
         Model, Ser = METRIC_REGISTRY[metric_id]
         rows = request.data.get('rows', [])
         # clear_dept_cache(dept.id)
-        Model.objects.filter(department=dept).delete()
+        Model.objects.filter(department=dept,aqar_year=aqar_year).delete()
         created, errors = [], []
         current_year = request.data.get("aqar_year")
         for i, row in enumerate(rows):
@@ -808,11 +809,12 @@ class CompletionStatusView(APIView):
 
     def get(self, request):
         dept = get_hod_department(request.user)
+        aqar_year = _get_active_year(request)
         if not dept:
             return Response({'error': 'No department assigned'}, status=403)
         completed = []
         for metric_id, (Model, _) in METRIC_REGISTRY.items():
-            if Model.objects.filter(department=dept).exists():
+            if Model.objects.filter(department=dept,aqar_year=aqar_year).exists():
                 completed.append(metric_id)
         return Response({
             'completed_metric_ids': completed,

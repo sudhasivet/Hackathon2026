@@ -242,12 +242,13 @@ class AllResponsesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        aqar_year = _get_active_year(request)
         dept = get_hod_department(request.user)
         if not dept:
             return Response({'error': 'No department assigned'}, status=403)
         result = {}
         for metric_id, (Model, Ser) in METRIC_REGISTRY.items():
-            qs = Model.objects.filter(department=dept)
+            qs = Model.objects.filter(department=dept,aqar_year=aqar_year)
             result[metric_id] = Ser(qs, many=True).data
         return Response(result)
 
@@ -670,8 +671,9 @@ class AdminDepartmentResponsesView(AdminOnly):
         if err: return err
         dept = get_object_or_404(Department, pk=dept_id)
         result = {}
+        aqar_year = _get_active_year(request)
         for metric_id, (Model, Ser) in METRIC_REGISTRY.items():
-            qs = Model.objects.filter(department=dept)
+            qs = Model.objects.filter(department=dept,aqar_year=aqar_year)
             result[metric_id] = Ser(qs, many=True).data
         return Response(result)
 

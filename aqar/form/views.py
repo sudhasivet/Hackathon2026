@@ -542,9 +542,10 @@ class DepartmentListView(AdminOnly):
         err = self.check_admin(request)
         if err: return err
         s = DepartmentSerializer(data=request.data)
+        aqar_year=_get_active_year(request)
         if s.is_valid():
             dept = s.save()
-            SubmissionStatus.objects.get_or_create(department=dept)
+            SubmissionStatus.objects.get_or_create(department=dept,aqar_year=aqar_year)
             return Response(DepartmentSerializer(dept).data, status=201)
         return Response(s.errors, status=400)
 

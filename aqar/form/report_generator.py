@@ -21,6 +21,7 @@ C_LIGHT  = colors.HexColor('#dce8f5')
 C_ACCENT = colors.HexColor('#c1272d')
 C_WHITE  = colors.white
 C_GREY   = colors.HexColor('#f5f5f5')
+C_AI_BG  = colors.HexColor('#f0f4fa')
 
 PAGE_W = A4[0] - 4 * cm   # usable text width
 

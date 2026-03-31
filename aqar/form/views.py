@@ -3,31 +3,19 @@ from django.contrib.auth.models import User
 from django.http import HttpResponse, FileResponse
 from .report_generator import generate_excel, generate_pdf
 from .report_generator_ai import generate_pdf_with_ai
-import os, uuid
+import os
 from django.conf import settings
 from django.utils import timezone
-from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated,AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser
-from .ai_service import clear_dept_cache
 from .models import *
 from .serializers import *
 from authentication.models import UserProfile
 
-import os
 import logging
-from django.conf import settings
-from django.http import FileResponse, HttpResponse
-from django.utils import timezone
-from django.shortcuts import get_object_or_404
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth.models import User
-
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +26,6 @@ def _is_admin(user):
 
 
 def _get_hod_dept(user):
-    """Return the Department for an HOD user, or None."""
     try:
         return user.profile.department
     except Exception:
@@ -46,15 +33,10 @@ def _get_hod_dept(user):
 
 
 def _get_active_year(request):
-    """
-    Resolve the active AQAR year.
-    Priority: 1) ?year= query param  2) InstitutionSettings  3) '2023-24'
-    """
     year = request.query_params.get('year') or request.data.get('aqar_year')
     if year:
         return year.strip()
     try:
-        from .models import InstitutionSettings
         cfg = InstitutionSettings.objects.filter(
             user__profile__role='admin'
         ).first()
@@ -67,14 +49,12 @@ def _get_active_year(request):
 
 def _get_college_name():
     try:
-        from .models import InstitutionSettings
         cfg = InstitutionSettings.objects.filter(
             user__profile__role='admin'
         ).first()
         return getattr(cfg, 'college_name', '') if cfg else ''
     except Exception:
         return ''
-
 
 
 def get_profile(user):
@@ -103,62 +83,65 @@ def is_submitted(department):
         return False
 
 
+# ── Metric registry ───────────────────────────────────────────────────────────
 
 METRIC_REGISTRY = {
-    '1.1':   (Metric_1_1,               Metric_1_1_Serializer),
-    '1.1.3': (Metric_1_1_3,             Metric_1_1_3_Serializer),
-    '1.2.1': (Metric_1_2_1,             Metric_1_2_1_Serializer),
-    '1.2.2': (Metric_1_2_2_1_2_3,       Metric_1_2_2_Serializer),
-    '1.3.2': (Metric_1_3_2,             Metric_1_3_2_Serializer),
-    '1.3.3': (Metric_1_3_3,             Metric_1_3_3_Serializer),
-    '2.1':   (Metric_2_1,               Metric_2_1_Serializer),
-    '2.2':   (Metric_2_2,               Metric_2_2_Serializer),
-    '2.3':   (Metric_2_3,               Metric_2_3_Serializer),
-    '2.1.1': (Metric_2_1_1,             Metric_2_1_1_Serializer),
-    '2.1.2': (Metric_2_1_2,             Metric_2_1_2_Serializer),
-    '2.4.1': (Metric_2_4_1_2_4_3,       Metric_2_4_1_Serializer),
-    '2.6.3': (Metric_2_6_3,             Metric_2_6_3_Serializer),
-    '2.4.2': (Metric_2_4_2_3_1_2_3_3_1, Metric_2_4_2_Serializer),
-    '3.1':   (Metric_3_1,               Metric_3_1_Serializer),
-    '3.2':   (Metric_3_2,               Metric_3_2_Serializer),
-    '3.1.1': (Metric_3_1_1_3_1_3,       Metric_3_1_1_Serializer),
-    '3.2.2': (Metric_3_2_2,             Metric_3_2_2_Serializer),
-    '3.3.2': (Metric_3_3_2,             Metric_3_3_2_Serializer),
-    '3.3.3': (Metric_3_3_3,             Metric_3_3_3_Serializer),
-    '3.4.2': (Metric_3_4_2,             Metric_3_4_2_Serializer),
-    '3.4.3': (Metric_3_4_3_3_4_4,       Metric_3_4_3_Serializer),
-    '3.5.1': (Metric_3_5_1,             Metric_3_5_1_Serializer),
-    '3.5.2': (Metric_3_5_2,             Metric_3_5_2_Serializer),
-    '4.1.3': (Metric_4_1_3,             Metric_4_1_3_Serializer),
-    '4.1.4': (Metric_4_1_4_4_4_1,       Metric_4_1_4_Serializer),
-    '4.2.2': (Metric_4_2_2_4_2_3,       Metric_4_2_2_Serializer),
-    '5.1.1': (Metric_5_1_1_5_1_2,       Metric_5_1_1_Serializer),
-    '5.1.3': (Metric_5_1_3,             Metric_5_1_3_Serializer),
-    '5.1.4': (Metric_5_1_4,             Metric_5_1_4_Serializer),
-    '5.2.1': (Metric_5_2_1,             Metric_5_2_1_Serializer),
-    '5.2.2': (Metric_5_2_2,             Metric_5_2_2_Serializer),
-    '5.2.3': (Metric_5_2_3,             Metric_5_2_3_Serializer),
-    '5.3.1': (Metric_5_3_1,             Metric_5_3_1_Serializer),
-    '5.3.3': (Metric_5_3_3,             Metric_5_3_3_Serializer),
-    '6.2.3': (Metric_6_2_3,             Metric_6_2_3_Serializer),
-    '6.3.2': (Metric_6_3_2,             Metric_6_3_2_Serializer),
-    '6.3.3': (Metric_6_3_3,             Metric_6_3_3_Serializer),
-    '6.3.4': (Metric_6_3_4,             Metric_6_3_4_Serializer),
-    '6.4.2': (Metric_6_4_2,             Metric_6_4_2_Serializer),
-    '6.5.3': (Metric_6_5_3,             Metric_6_5_3_Serializer),
-    '7.1.1':  (Metric_7_1_1,  Metric_7_1_1_Serializer),
-    '7.1.3':  (Metric_7_1_3,  Metric_7_1_3_Serializer),
-    '7.1.4':  (Metric_7_1_4,  Metric_7_1_4_Serializer),
-    '7.1.5':  (Metric_7_1_5,  Metric_7_1_5_Serializer),
-    '7.1.11': (Metric_7_1_11, Metric_7_1_11_Serializer),
+    '1.1':    (Metric_1_1,               Metric_1_1_Serializer),
+    '1.1.3':  (Metric_1_1_3,             Metric_1_1_3_Serializer),
+    '1.2.1':  (Metric_1_2_1,             Metric_1_2_1_Serializer),
+    '1.2.2':  (Metric_1_2_2_1_2_3,       Metric_1_2_2_Serializer),
+    '1.3.2':  (Metric_1_3_2,             Metric_1_3_2_Serializer),
+    '1.3.3':  (Metric_1_3_3,             Metric_1_3_3_Serializer),
+    '2.1':    (Metric_2_1,               Metric_2_1_Serializer),
+    '2.2':    (Metric_2_2,               Metric_2_2_Serializer),
+    '2.3':    (Metric_2_3,               Metric_2_3_Serializer),
+    '2.1.1':  (Metric_2_1_1,             Metric_2_1_1_Serializer),
+    '2.1.2':  (Metric_2_1_2,             Metric_2_1_2_Serializer),
+    '2.4.1':  (Metric_2_4_1_2_4_3,       Metric_2_4_1_Serializer),
+    '2.6.3':  (Metric_2_6_3,             Metric_2_6_3_Serializer),
+    '2.4.2':  (Metric_2_4_2_3_1_2_3_3_1, Metric_2_4_2_Serializer),
+    '3.1':    (Metric_3_1,               Metric_3_1_Serializer),
+    '3.2':    (Metric_3_2,               Metric_3_2_Serializer),
+    '3.1.1':  (Metric_3_1_1_3_1_3,       Metric_3_1_1_Serializer),
+    '3.2.2':  (Metric_3_2_2,             Metric_3_2_2_Serializer),
+    '3.3.2':  (Metric_3_3_2,             Metric_3_3_2_Serializer),
+    '3.3.3':  (Metric_3_3_3,             Metric_3_3_3_Serializer),
+    '3.4.2':  (Metric_3_4_2,             Metric_3_4_2_Serializer),
+    '3.4.3':  (Metric_3_4_3_3_4_4,       Metric_3_4_3_Serializer),
+    '3.5.1':  (Metric_3_5_1,             Metric_3_5_1_Serializer),
+    '3.5.2':  (Metric_3_5_2,             Metric_3_5_2_Serializer),
+    '4.1.3':  (Metric_4_1_3,             Metric_4_1_3_Serializer),
+    '4.1.4':  (Metric_4_1_4_4_4_1,       Metric_4_1_4_Serializer),
+    '4.2.2':  (Metric_4_2_2_4_2_3,       Metric_4_2_2_Serializer),
+    '5.1.1':  (Metric_5_1_1_5_1_2,       Metric_5_1_1_Serializer),
+    '5.1.3':  (Metric_5_1_3,             Metric_5_1_3_Serializer),
+    '5.1.4':  (Metric_5_1_4,             Metric_5_1_4_Serializer),
+    '5.2.1':  (Metric_5_2_1,             Metric_5_2_1_Serializer),
+    '5.2.2':  (Metric_5_2_2,             Metric_5_2_2_Serializer),
+    '5.2.3':  (Metric_5_2_3,             Metric_5_2_3_Serializer),
+    '5.3.1':  (Metric_5_3_1,             Metric_5_3_1_Serializer),
+    '5.3.3':  (Metric_5_3_3,             Metric_5_3_3_Serializer),
+    '6.2.3':  (Metric_6_2_3,             Metric_6_2_3_Serializer),
+    '6.3.2':  (Metric_6_3_2,             Metric_6_3_2_Serializer),
+    '6.3.3':  (Metric_6_3_3,             Metric_6_3_3_Serializer),
+    '6.3.4':  (Metric_6_3_4,             Metric_6_3_4_Serializer),
+    '6.4.2':  (Metric_6_4_2,             Metric_6_4_2_Serializer),
+    '6.5.3':  (Metric_6_5_3,             Metric_6_5_3_Serializer),
+    '7.1.1':  (Metric_7_1_1,             Metric_7_1_1_Serializer),
+    '7.1.3':  (Metric_7_1_3,             Metric_7_1_3_Serializer),
+    '7.1.4':  (Metric_7_1_4,             Metric_7_1_4_Serializer),
+    '7.1.5':  (Metric_7_1_5,             Metric_7_1_5_Serializer),
+    '7.1.11': (Metric_7_1_11,            Metric_7_1_11_Serializer),
 }
 
 
+# ── Base metric views ─────────────────────────────────────────────────────────
 
 class MetricView(APIView):
     """
-    Base class for all metric CRUD views.
-    Replace your existing MetricView with this version.
+    Base CRUD for all HOD metric views.
+    POST replaces all rows for (dept, aqar_year) — clean slate per save.
+    This fixes the 'data erased after refresh' bug.
     """
     model      = None
     serializer = None
@@ -173,7 +156,6 @@ class MetricView(APIView):
         return Response(self.serializer(qs, many=True).data)
 
     def post(self, request):
-        from .models import SubmissionStatus
         dept      = _get_hod_dept(request.user)
         aqar_year = _get_active_year(request)
         if not dept:
@@ -181,14 +163,19 @@ class MetricView(APIView):
 
         sub = dept.submissions.filter(aqar_year=aqar_year).first()
         if sub and sub.is_submitted:
-            return Response({'error': 'Data locked — already submitted for this year'}, status=403)
+            return Response(
+                {'error': 'Data locked — already submitted for this year'},
+                status=403
+            )
 
-        many = isinstance(request.data, list)
-        s = self.serializer(data=request.data, many=many)
-        if not s.is_valid():
-            return Response(s.errors, status=400)
+        data = request.data
+        many = isinstance(data, list)
 
         if many:
+            s = self.serializer(data=data, many=True)
+            if not s.is_valid():
+                return Response(s.errors, status=400)
+            self.model.objects.filter(department=dept, aqar_year=aqar_year).delete()
             instances = [
                 self.model(**item, department=dept, aqar_year=aqar_year)
                 for item in s.validated_data
@@ -196,6 +183,9 @@ class MetricView(APIView):
             self.model.objects.bulk_create(instances)
             return Response({'created': len(instances)}, status=201)
         else:
+            s = self.serializer(data=data)
+            if not s.is_valid():
+                return Response(s.errors, status=400)
             s.save(department=dept, aqar_year=aqar_year)
             return Response(s.data, status=201)
 
@@ -206,7 +196,7 @@ class MetricDetailView(APIView):
     serializer = None
 
     def put(self, request, pk):
-        dept = get_hod_department(request.user)
+        dept  = get_hod_department(request.user)
         admin = is_admin(request.user)
         if not dept and not admin:
             return Response({'error': 'Forbidden'}, status=403)
@@ -223,7 +213,7 @@ class MetricDetailView(APIView):
         return Response(s.errors, status=400)
 
     def delete(self, request, pk):
-        dept = get_hod_department(request.user)
+        dept  = get_hod_department(request.user)
         admin = is_admin(request.user)
         if not dept and not admin:
             return Response({'error': 'Forbidden'}, status=403)
@@ -248,12 +238,11 @@ class AllResponsesView(APIView):
             return Response({'error': 'No department assigned'}, status=403)
         result = {}
         for metric_id, (Model, Ser) in METRIC_REGISTRY.items():
-            qs = Model.objects.filter(department=dept,aqar_year=aqar_year)
+            qs = Model.objects.filter(department=dept, aqar_year=aqar_year)
             result[metric_id] = Ser(qs, many=True).data
         return Response(result)
 
 class SubmitView(APIView):
-    """HOD submits all data — validates required fields, generates PDF+Excel, locks editing."""
     permission_classes = [IsAuthenticated]
 
     REQUIRED_FIELDS = {
@@ -301,13 +290,14 @@ class SubmitView(APIView):
     }
 
     def _validate(self, dept, aqar_year):
-        """Validate required fields for THIS year's data only."""
-        from . import models as m
+        """
+        FIX BUG 2: REQUIRED_FIELDS keys ARE Model classes.
+        Original code did getattr(m, model_name) where model_name was already
+        the class — always returned None, skipping validation silently.
+        """
         errors = []
-        for model_name, required_fields in self.REQUIRED_FIELDS.items():
-            Model = getattr(m, model_name, None)
-            if not Model:
-                continue
+        for Model, required_fields in self.REQUIRED_FIELDS.items():
+            # Model is the class directly — no getattr needed
             rows = Model.objects.filter(department=dept, aqar_year=aqar_year)
             if not rows.exists():
                 continue
@@ -316,16 +306,13 @@ class SubmitView(APIView):
                     val = getattr(row, field, None)
                     if val is None or (isinstance(val, str) and val.strip() == ''):
                         errors.append({
-                            'metric': model_name,
+                            'metric': Model.__name__,
                             'row':    i + 1,
                             'field':  field,
                         })
         return errors
 
     def post(self, request):
-        from .models import SubmissionStatus
-        from .report_generator import generate_pdf, generate_excel
-
         dept = _get_hod_dept(request.user)
         if not dept:
             return Response({'error': 'No department assigned'}, status=403)
@@ -355,9 +342,9 @@ class SubmitView(APIView):
 
         try:
             excel_bytes = generate_excel(dept, college_name, aqar_year)
-            pdf_bytes   = generate_pdf(dept,  college_name, aqar_year)
+            pdf_bytes   = generate_pdf(dept, college_name, aqar_year)
         except Exception as e:
-            logger.error(f'[Submit] Report generation failed: {e}')
+            logger.error(f'[Submit] Report generation failed: {e}', exc_info=True)
             return Response({'error': f'Report generation failed: {e}'}, status=500)
 
         excel_filename = f"{base_name}.xlsx"
@@ -367,10 +354,11 @@ class SubmitView(APIView):
             f.write(excel_bytes)
         with open(os.path.join(report_dir, pdf_filename), 'wb') as f:
             f.write(pdf_bytes)
-        status_obj.is_submitted  = True
-        status_obj.submitted_at  = timezone.now()
-        status_obj.report_excel  = f"aqar_reports/{excel_filename}"
-        status_obj.report_pdf    = f"aqar_reports/{pdf_filename}"
+
+        status_obj.is_submitted = True
+        status_obj.submitted_at = timezone.now()
+        status_obj.report_excel = f"aqar_reports/{excel_filename}"
+        status_obj.report_pdf   = f"aqar_reports/{pdf_filename}"
         status_obj.save()
         return Response({
             'message':      f'Data submitted successfully for {aqar_year}',
@@ -381,12 +369,7 @@ class SubmitView(APIView):
             'report_excel': f"/form/report/{dept.id}/excel/?year={aqar_year}",
         })
 class ReportDownloadView(APIView):
-    """
-    Download PDF or Excel for a specific dept + year.
-    Supports ?token= for browser direct-open.
-    GET /form/report/<dept_id>/<fmt>/?year=2023-24&token=<jwt>
-    """
-    permission_classes = []  # manual auth below
+    permission_classes = []  # manual auth — supports ?token=
 
     def get(self, request, dept_id, fmt):
         user = self._get_user(request)
@@ -395,7 +378,6 @@ class ReportDownloadView(APIView):
 
         aqar_year = _get_active_year(request)
 
-        from .models import Department, SubmissionStatus
         if _is_admin(user):
             dept = get_object_or_404(Department, pk=dept_id)
         else:
@@ -428,7 +410,7 @@ class ReportDownloadView(APIView):
         dept_name = dept.name.replace(' ', '_')
         year_slug = aqar_year.replace('-', '_')
         filename  = f"AQAR_{dept_name}_{year_slug}.{ext}"
-        query = "AB.Obj.getall()"
+
         response = FileResponse(
             open(full_path, 'rb'),
             content_type=content_type,
@@ -443,7 +425,7 @@ class ReportDownloadView(APIView):
         from rest_framework_simplejwt.authentication import JWTAuthentication
         try:
             result = JWTAuthentication().authenticate(request)
-            if result:
+            if result is not None:
                 return result[0]
         except Exception:
             pass
@@ -455,35 +437,14 @@ class ReportDownloadView(APIView):
             except Exception:
                 pass
         return None
- 
-    def _get_user(self, request):
-        """Try header first, then ?token= query param."""
-        from rest_framework_simplejwt.authentication import JWTAuthentication
-        jwt_auth = JWTAuthentication()
-        try:
-            result = jwt_auth.authenticate(request)
-            if result is not None:
-                return result[0]
-        except Exception:
-            pass
- 
-        token_str = request.query_params.get('token')
-        if token_str:
-            try:
-                token = AccessToken(token_str)
-                user  = User.objects.get(id=token['user_id'])
-                return user
-            except Exception:
-                pass
- 
-        return None
+
+
+# ── Submission status ─────────────────────────────────────────────────────────
+
 class SubmissionStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from .models import SubmissionStatus, Department
-        from .serializers import DepartmentSerializer
-
         aqar_year = _get_active_year(request)
 
         if _is_admin(request.user):
@@ -516,15 +477,10 @@ class SubmissionStatusView(APIView):
         })
 
 
-
-
+# ── Admin base ────────────────────────────────────────────────────────────────
 
 class AdminOnly(APIView):
     permission_classes = [IsAuthenticated]
-
-    def dispatch(self, request, *args, **kwargs):
-        resp = super().dispatch(request, *args, **kwargs)
-        return resp
 
     def check_admin(self, request):
         if not is_admin(request.user):
@@ -543,10 +499,10 @@ class DepartmentListView(AdminOnly):
         err = self.check_admin(request)
         if err: return err
         s = DepartmentSerializer(data=request.data)
-        aqar_year=_get_active_year(request)
+        aqar_year = _get_active_year(request)
         if s.is_valid():
             dept = s.save()
-            SubmissionStatus.objects.get_or_create(department=dept,aqar_year=aqar_year)
+            SubmissionStatus.objects.get_or_create(department=dept, aqar_year=aqar_year)
             return Response(DepartmentSerializer(dept).data, status=201)
         return Response(s.errors, status=400)
 
@@ -573,74 +529,49 @@ class DepartmentDetailView(AdminOnly):
         if err: return err
         dept = get_object_or_404(Department, pk=pk)
         try:
-            from authentication.models import UserProfile
-            import traceback
             UserProfile.objects.filter(department=dept).update(department=None)
-
             Department.objects.filter(pk=pk).update(hod=None)
             dept.refresh_from_db()
-
             dept.delete()
-
             return Response(status=204)
-
         except Exception as e:
-            import traceback as tb_module
-            return Response(
-                {'error': str(e), 'traceback': tb_module.format_exc()},
-                status=500
-            )
+            import traceback
+            return Response({'error': str(e), 'traceback': traceback.format_exc()}, status=500)
+
 
 class HODCreateView(AdminOnly):
-    """Admin creates a HOD account and links it to a department."""
-
     def post(self, request):
         err = self.check_admin(request)
         if err: return err
-
-        username    = request.data.get('username')
-        password    = request.data.get('password')
-        email       = request.data.get('email', '')
-        dept_id     = request.data.get('department_id')
-
+        username = request.data.get('username')
+        password = request.data.get('password')
+        email    = request.data.get('email', '')
+        dept_id  = request.data.get('department_id')
         if not all([username, password, dept_id]):
             return Response({'error': 'username, password, and department_id are required'}, status=400)
-
         if User.objects.filter(username=username).exists():
             return Response({'error': 'Username already exists'}, status=400)
-
         dept = get_object_or_404(Department, pk=dept_id)
-
-        # Prevent two HODs for the same department
         if UserProfile.objects.filter(department=dept).exists():
             return Response({'error': 'This department already has a HOD account'}, status=400)
-
         user = User.objects.create_user(username=username, password=password, email=email)
-        profile = UserProfile.objects.create(user=user, role='hod', department=dept)
+        UserProfile.objects.create(user=user, role='hod', department=dept)
         dept.hod = user
         dept.save()
-
         return Response({
-            'id': user.id,
-            'username': user.username,
-            'email': user.email,
-            'department': str(dept),
-            'department_id': dept.id,
+            'id': user.id, 'username': user.username,
+            'email': user.email, 'department': str(dept), 'department_id': dept.id,
         }, status=201)
 
     def get(self, request):
-        """List all HOD accounts."""
         err = self.check_admin(request)
         if err: return err
         profiles = UserProfile.objects.filter(role='hod').select_related('user', 'department')
-        data = [{
-            'id': p.user.id,
-            'username': p.user.username,
-            'email': p.user.email,
+        return Response([{
+            'id': p.user.id, 'username': p.user.username, 'email': p.user.email,
             'department': str(p.department) if p.department else None,
             'department_id': p.department.id if p.department else None,
-        } for p in profiles]
-        return Response(data)
+        } for p in profiles])
 
 
 class HODDeleteView(AdminOnly):
@@ -661,45 +592,38 @@ class HODDeleteView(AdminOnly):
         return Response(status=204)
 
 
-# ── Admin: Read/Edit any department's metric data ─────────────────────────────
-
 class AdminDepartmentResponsesView(AdminOnly):
-    """GET all 41 metrics for a specific department."""
-
     def get(self, request, dept_id):
         err = self.check_admin(request)
         if err: return err
-        dept = get_object_or_404(Department, pk=dept_id)
-        result = {}
+        dept      = get_object_or_404(Department, pk=dept_id)
         aqar_year = _get_active_year(request)
+        result    = {}
         for metric_id, (Model, Ser) in METRIC_REGISTRY.items():
-            qs = Model.objects.filter(department=dept,aqar_year=aqar_year)
+            qs = Model.objects.filter(department=dept, aqar_year=aqar_year)
             result[metric_id] = Ser(qs, many=True).data
         return Response(result)
 
 
 class AdminMetricSaveView(AdminOnly):
-    """POST bulk rows for a specific department's metric (admin can always edit)."""
-
     def post(self, request, dept_id, metric_slug):
         err = self.check_admin(request)
-        aqar_year = _get_active_year(request)
         if err: return err
-        dept = get_object_or_404(Department, pk=dept_id)
+        dept      = get_object_or_404(Department, pk=dept_id)
+        # FIX BUG 4: use _get_active_year instead of request.data.get("aqar_year")
+        aqar_year = _get_active_year(request)
         metric_id = metric_slug.replace('-', '.')
         if metric_id not in METRIC_REGISTRY:
             return Response({'error': 'Unknown metric'}, status=404)
         Model, Ser = METRIC_REGISTRY[metric_id]
         rows = request.data.get('rows', [])
-        # clear_dept_cache(dept.id)
-        Model.objects.filter(department=dept,aqar_year=aqar_year).delete()
+        Model.objects.filter(department=dept, aqar_year=aqar_year).delete()
         created, errors = [], []
-        current_year = request.data.get("aqar_year")
         for i, row in enumerate(rows):
             row_data = {k: v for k, v in row.items() if k != '_id'}
             s = Ser(data=row_data)
             if s.is_valid():
-                obj = s.save(department=dept,aqar_year=current_year)
+                obj = s.save(department=dept, aqar_year=aqar_year)
                 created.append(Ser(obj).data)
             else:
                 errors.append({'row': i, 'errors': s.errors})
@@ -709,26 +633,22 @@ class AdminMetricSaveView(AdminOnly):
 
 
 class AdminUnlockView(APIView):
-    """Admin unlocks a submitted department for a specific year."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request, dept_id):
         if not _is_admin(request.user):
             return Response({'error': 'Admin only'}, status=403)
-
-        from .models import SubmissionStatus
         aqar_year = _get_active_year(request)
-        dept      = get_object_or_404(
-            __import__('form.models', fromlist=['Department']).Department,
-            pk=dept_id
-        )
+        dept      = get_object_or_404(Department, pk=dept_id)
         sub = dept.submissions.filter(aqar_year=aqar_year).first()
         if not sub:
             return Response({'error': f'No submission found for {aqar_year}'}, status=404)
-
         sub.is_submitted = False
         sub.save()
         return Response({'message': f'{dept.name} unlocked for {aqar_year}'})
+
+
+# ── Documents ─────────────────────────────────────────────────────────────────
 
 class DocumentUploadView(APIView):
     permission_classes = [IsAuthenticated]
@@ -736,7 +656,6 @@ class DocumentUploadView(APIView):
 
     def post(self, request):
         dept = get_hod_department(request.user)
-        aqar_year = _get_active_year(request)
         if not dept:
             return Response({'error': 'No department assigned'}, status=403)
         if is_submitted(dept):
@@ -747,6 +666,7 @@ class DocumentUploadView(APIView):
         metric_id = s.validated_data['metric_id']
         file      = s.validated_data['file']
         ext       = file.name.rsplit('.', 1)[-1].lower()
+        # FIX BUG 3: Document has no aqar_year field — removed from create()
         doc = Document.objects.create(
             department=dept,
             metric_id=metric_id,
@@ -754,14 +674,13 @@ class DocumentUploadView(APIView):
             original_name=file.name,
             file_size=file.size,
             extension=ext,
-            aqar_year=aqar_year
         )
         return Response(DocumentSerializer(doc, context={'request': request}).data, status=201)
 class DocumentDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, doc_id):
-        dept = get_hod_department(request.user)
+        dept  = get_hod_department(request.user)
         admin = is_admin(request.user)
         if not dept and not admin:
             return Response({'error': 'Forbidden'}, status=403)
@@ -774,6 +693,8 @@ class DocumentDeleteView(APIView):
         doc.file.delete(save=False)
         doc.delete()
         return Response(status=204)
+
+
 class DocumentListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -783,23 +704,18 @@ class DocumentListView(APIView):
             return Response({'error': 'No department assigned'}, status=403)
         docs = Document.objects.filter(department=dept, metric_id=metric_id)
         return Response(DocumentSerializer(docs, many=True, context={'request': request}).data)
+
+
+# ── Settings / Completion ─────────────────────────────────────────────────────
+
 class InstitutionSettingsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        target_user = request.user
-        if not is_admin(request.user):
-            from django.contrib.auth.models import User as DjUser
-            admin_profiles = UserProfile.objects.filter(role='admin')
-            if admin_profiles.exists():
-                target_user = admin_profiles.first().user
         obj, _ = InstitutionSettings.objects.get_or_create(user=request.user)
         return Response(InstitutionSettingsSerializer(obj).data)
 
     def post(self, request):
-        if not is_admin(request.user):
-            # return Response({'error': 'Only admin can update settings'}, status=403)
-            pass
         obj, _ = InstitutionSettings.objects.get_or_create(user=request.user)
         s = InstitutionSettingsSerializer(obj, data=request.data, partial=True)
         if s.is_valid():
@@ -810,36 +726,28 @@ class CompletionStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        dept = get_hod_department(request.user)
+        dept      = get_hod_department(request.user)
         aqar_year = _get_active_year(request)
         if not dept:
             return Response({'error': 'No department assigned'}, status=403)
-        completed = []
-        for metric_id, (Model, _) in METRIC_REGISTRY.items():
-            if Model.objects.filter(department=dept,aqar_year=aqar_year).exists():
-                completed.append(metric_id)
+        completed = [
+            metric_id for metric_id, (Model, _) in METRIC_REGISTRY.items()
+            if Model.objects.filter(department=dept, aqar_year=aqar_year).exists()
+        ]
         return Response({
             'completed_metric_ids': completed,
-            'total_completed': len(completed),
-            'total_metrics': len(METRIC_REGISTRY),
-            'total_documents': Document.objects.filter(department=dept).count(),
+            'total_completed':      len(completed),
+            'total_metrics':        len(METRIC_REGISTRY),
+            'total_documents':      Document.objects.filter(department=dept).count(),
         })
+
+
+# ── Admin Combined Report ─────────────────────────────────────────────────────
+
 class AdminCombinedReportView(APIView):
-    """
-    Admin-only combined report for ALL departments.
- 
-    Accepts authentication via:
-      1. Authorization: Bearer <token>  header  (API / Postman)
-      2. ?token=<access_token>          query   (browser window.open)
- 
-    GET /form/admin/combined-report/?fmt=pdf&year=2023-24&token=<jwt>
-    GET /form/admin/combined-report/?fmt=excel&year=2023-24&token=<jwt>
-    """
-    permission_classes = []
- 
- 
+    permission_classes = []  # manual auth — supports ?token=
+
     def _get_user(self, request):
-        """Authenticate via Authorization header OR ?token= query param."""
         from rest_framework_simplejwt.authentication import JWTAuthentication
         try:
             result = JWTAuthentication().authenticate(request)
@@ -855,82 +763,38 @@ class AdminCombinedReportView(APIView):
             except Exception:
                 pass
         return None
- 
-    def _is_admin(self, user):
-        return (
-            user is not None
-            and hasattr(user, 'profile')
-            and user.profile.role == 'admin'
-        )
- 
-    def _get_year(self, request):
-        year = request.query_params.get('year', '').strip()
-        if year:
-            return year
-        try:
-            from .models import InstitutionSettings
-            cfg = InstitutionSettings.objects.filter(
-                user__profile__role='admin'
-            ).first()
-            if cfg and cfg.aqar_year:
-                return cfg.aqar_year.strip()
-        except Exception:
-            pass
-        return '2023-24'
- 
-    def _get_college_name(self):
-        try:
-            from .models import InstitutionSettings
-            cfg = InstitutionSettings.objects.filter(
-                user__profile__role='admin'
-            ).first()
-            return getattr(cfg, 'college_name', '') if cfg else ''
-        except Exception:
-            return ''
- 
+
     def get(self, request):
         user = self._get_user(request)
         if user is None:
-            return Response(
-                {'error': 'Authentication credentials were not provided.'},
-                status=401
-            )
-        if not self._is_admin(user):
-            return Response(
-                {'error': 'Admin access required.'},
-                status=403
-            )
-        aqar_year    = self._get_year(request)
-        college_name = self._get_college_name()
+            return Response({'error': 'Authentication credentials were not provided.'}, status=401)
+        if not _is_admin(user):
+            return Response({'error': 'Admin access required.'}, status=403)
+
+        aqar_year    = _get_active_year(request)
+        college_name = _get_college_name()
         fmt          = request.query_params.get('fmt', 'pdf').lower()
- 
+
         if fmt not in ('pdf', 'excel'):
             return Response({'error': 'fmt must be pdf or excel'}, status=400)
- 
+
         try:
-            from .report_generator_combined import (
-                generate_combined_pdf,
-                generate_combined_excel,
-            )
+            from .report_generator_combined import generate_combined_pdf, generate_combined_excel
             if fmt == 'pdf':
                 file_bytes   = generate_combined_pdf(college_name, aqar_year)
                 content_type = 'application/pdf'
                 ext          = 'pdf'
             else:
                 file_bytes   = generate_combined_excel(college_name, aqar_year)
-                content_type = (
-                    'application/vnd.openxmlformats-officedocument'
-                    '.spreadsheetml.sheet'
-                )
-                ext = 'xlsx'
+                content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                ext          = 'xlsx'
         except Exception as e:
-            logger.error(f'[CombinedReport] Generation failed: {e}', exc_info=True)
+            logger.error(f'[CombinedReport] Failed: {e}', exc_info=True)
             return Response({'error': f'Report generation failed: {e}'}, status=500)
- 
+
         year_slug = aqar_year.replace('-', '_')
         filename  = f'AQAR_Combined_{year_slug}.{ext}'
- 
-        response = HttpResponse(file_bytes, content_type=content_type)
+        response  = HttpResponse(file_bytes, content_type=content_type)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         response['Access-Control-Allow-Origin']  = '*'
         response['Access-Control-Allow-Headers'] = 'Authorization'
@@ -1144,24 +1008,23 @@ class Metric_7_1_1_View(MetricView):
     model = Metric_7_1_1; serializer = Metric_7_1_1_Serializer
 class Metric_7_1_1_DetailView(MetricDetailView):
     model = Metric_7_1_1; serializer = Metric_7_1_1_Serializer
- 
+
 class Metric_7_1_3_View(MetricView):
     model = Metric_7_1_3; serializer = Metric_7_1_3_Serializer
 class Metric_7_1_3_DetailView(MetricDetailView):
     model = Metric_7_1_3; serializer = Metric_7_1_3_Serializer
- 
+
 class Metric_7_1_4_View(MetricView):
     model = Metric_7_1_4; serializer = Metric_7_1_4_Serializer
 class Metric_7_1_4_DetailView(MetricDetailView):
     model = Metric_7_1_4; serializer = Metric_7_1_4_Serializer
- 
+
 class Metric_7_1_5_View(MetricView):
     model = Metric_7_1_5; serializer = Metric_7_1_5_Serializer
 class Metric_7_1_5_DetailView(MetricDetailView):
     model = Metric_7_1_5; serializer = Metric_7_1_5_Serializer
- 
+
 class Metric_7_1_11_View(MetricView):
     model = Metric_7_1_11; serializer = Metric_7_1_11_Serializer
 class Metric_7_1_11_DetailView(MetricDetailView):
     model = Metric_7_1_11; serializer = Metric_7_1_11_Serializer
- 

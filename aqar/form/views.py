@@ -736,6 +736,7 @@ class DocumentUploadView(APIView):
 
     def post(self, request):
         dept = get_hod_department(request.user)
+        aqar_year = _get_active_year(request)
         if not dept:
             return Response({'error': 'No department assigned'}, status=403)
         if is_submitted(dept):
@@ -753,6 +754,7 @@ class DocumentUploadView(APIView):
             original_name=file.name,
             file_size=file.size,
             extension=ext,
+            aqar_year=aqar_year
         )
         return Response(DocumentSerializer(doc, context={'request': request}).data, status=201)
 class DocumentDeleteView(APIView):

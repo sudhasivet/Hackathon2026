@@ -690,11 +690,12 @@ class AdminMetricSaveView(AdminOnly):
         # clear_dept_cache(dept.id)
         Model.objects.filter(department=dept).delete()
         created, errors = [], []
+        current_year = request.data.get("aqar_year")
         for i, row in enumerate(rows):
             row_data = {k: v for k, v in row.items() if k != '_id'}
             s = Ser(data=row_data)
             if s.is_valid():
-                obj = s.save(department=dept)
+                obj = s.save(department=dept,aqar_year=current_year)
                 created.append(Ser(obj).data)
             else:
                 errors.append({'row': i, 'errors': s.errors})

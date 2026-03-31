@@ -76,11 +76,14 @@ def get_hod_department(user):
     return None
 
 
-def is_submitted(department):
-    try:
-        return department.submission.is_submitted
-    except SubmissionStatus.DoesNotExist:
-        return False
+# def is_submitted(department):
+#     try:
+#         return department.submission.is_submitted
+#     except SubmissionStatus.DoesNotExist:
+#         return False
+def is_submitted(department, aqar_year):
+    sub = department.submissions.filter(aqar_year=aqar_year).first()
+    return sub.is_submitted if sub else False
 
 
 # ── Metric registry ───────────────────────────────────────────────────────────
@@ -658,7 +661,8 @@ class DocumentUploadView(APIView):
         dept = get_hod_department(request.user)
         if not dept:
             return Response({'error': 'No department assigned'}, status=403)
-        if is_submitted(dept):
+        aqar_year = _get_active_year(request)
+        if is_submitted(dept, aqar_year):
             return Response({'error': 'Data is locked — already submitted.'}, status=403)
         s = DocumentUploadSerializer(data=request.data)
         if not s.is_valid():

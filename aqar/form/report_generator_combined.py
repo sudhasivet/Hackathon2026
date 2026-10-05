@@ -155,7 +155,7 @@ def generate_combined_pdf(college_name='', aqar_year='2023-24'):
       2. Combined data table (with Department column)
     """
     try:
-        from .ai_client import generate_paragraph as ai_generate
+        from .ai_service import generate_ai_paragraphs as ai_generate
         ai_enabled = True
     except Exception:
         ai_enabled = False

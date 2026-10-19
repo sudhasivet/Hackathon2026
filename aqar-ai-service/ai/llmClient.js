@@ -211,10 +211,10 @@ const PROVIDERS = {
     fn: callGemini,
     name: 'Google Gemini'
   },
-  groq: {
-    fn: callGroq,
-    name: 'Groq'
-  },
+  // groq: {
+  //   fn: callGroq,
+  //   name: 'Groq'
+  // },
   together: {
     fn: callTogether,
     name: 'Together AI'

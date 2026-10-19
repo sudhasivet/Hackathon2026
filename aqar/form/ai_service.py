@@ -132,3 +132,39 @@ def clear_dept_cache(dept_id: int):
         )
     except Exception:
         pass 
+def generate_combined_paragraphs(college_name: str = '', aqar_year: str = '') -> dict:
+    """One /api/generate/all call using rows from ALL departments for a year.
+    Returns { metricId: paragraph_text }."""
+    from . import models as m
+
+    metrics_data = {}
+    for metric_id, (model_name, fields) in SUPPORTED_METRICS.items():
+        Model = getattr(m, model_name, None)
+        if not Model:
+            continue
+        rows = [
+            {f: str(getattr(o, f, '') or '') for f in fields}
+            for o in Model.objects.filter(aqar_year=aqar_year)
+        ]
+        if rows:                      # skip empty metrics: saves LLM calls
+            metrics_data[metric_id] = rows
+
+    if not metrics_data:              # server.js returns a canned paragraph on empty input
+        return {}
+
+    payload = {
+        'metricsData':    metrics_data,
+        'deptId':         f'combined-{aqar_year}',
+        'departmentName': 'All Departments',
+        'collegeName':    college_name or '',
+        'aqarYear':       aqar_year or '2023-24',
+    }
+    try:
+        resp = requests.post(f'{AI_SERVICE_URL}/api/generate/all',
+                             json=payload, timeout=AI_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        return {mid: r.get('text', '') for mid, r in data.items() if isinstance(r, dict)}
+    except Exception as e:
+        logger.error(f'[AI] Combined generation failed: {e}')
+        return {}

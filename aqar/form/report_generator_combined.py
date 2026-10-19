@@ -314,15 +314,15 @@ def generate_combined_pdf(college_name='', aqar_year='2023-24'):
             # AI paragraph (institution-wide context)
             if ai_enabled and rows:
                 try:
-                    prompt  = _build_combined_prompt(mid, rows, combined_headers,
-                                                     college_name, aqar_year)
-                    ai_text = ai_generate(prompt)
+                    from .ai_service import generate_combined_paragraphs
+                    ai_paragraphs = generate_combined_paragraphs(college_name, aqar_year)
+                    ai_text = ai_paragraphs.get(mid, '').strip()
                     if ai_text:
                         block.append(Paragraph('Institution-Wide Qualitative Description', S_AI_LBL))
                         ai_box = Table([[Paragraph(ai_text, S_AI)]], colWidths=[PAGE_W])
                         ai_box.setStyle(TableStyle([
                             ('BACKGROUND',   (0,0),(-1,-1), C_AI_BG),
-                            ('LINEBEFORE',   (0,0),(0,-1),  3, C_ACCENT),   # red border = admin
+                            ('LINEBEFORE',   (0,0),(0,-1),  3, C_ACCENT),
                             ('TOPPADDING',   (0,0),(-1,-1), 10),
                             ('BOTTOMPADDING',(0,0),(-1,-1), 10),
                             ('LEFTPADDING',  (0,0),(-1,-1), 14),
@@ -331,7 +331,9 @@ def generate_combined_pdf(college_name='', aqar_year='2023-24'):
                         block.append(ai_box)
                         block.append(Spacer(1, 0.2*cm))
                 except Exception as e:
-                    logger.warning(f'[CombinedPDF] AI failed for {mid}: {e}')
+                        logger.error(f'[CombinedPDF] AI setup failed: {e}')
+                        ai_paragraphs = {}
+                        ai_enabled = bool(ai_paragraphs)
 
             if not rows:
                 block.append(Paragraph(

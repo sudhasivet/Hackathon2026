@@ -26,6 +26,7 @@ function cleanResponse(raw) {
     .trim()
 }
 
+
 async function callGemini(prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {

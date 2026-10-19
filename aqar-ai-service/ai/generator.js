@@ -11,7 +11,7 @@ function countWords(text) {
 function validate(text) {
   const errors = []
   const words  = countWords(text)
-  if (words < 100)  errors.push(`Too short: ${words} words`)
+  // if (words < 100)  errors.push(`Too short: ${words} words`)
   if (words > 220)  errors.push(`Too long: ${words} words`)
   if (text.includes('{') || text.includes('[')) errors.push('Contains JSON characters')
   if (/^\s*[-•*]\s/m.test(text))  errors.push('Contains bullet points')

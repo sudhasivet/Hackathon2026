@@ -26,6 +26,62 @@ function cleanResponse(raw) {
     .trim()
 }
 
+async function callGemini(prompt) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY not set');
+  }
+
+  const model =
+    process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+
+  const res = await fetchWithTimeout(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{
+            text: 'You are a professional NAAC AQAR report writer for Indian colleges. Write one formal, factual paragraph. Do not invent data. Do not use headings, lists, bullets, or JSON.'
+          }]
+        },
+        contents: [{
+          role: 'user',
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 500
+        }
+      })
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Gemini API ${res.status}: ${err.slice(0, 300)}`);
+  }
+
+  const data = await res.json();
+
+  const text = data.candidates?.[0]?.content?.parts
+    ?.map(part => part.text || '')
+    .join('')
+    .trim();
+
+  if (!text) {
+    throw new Error(
+      `Gemini returned no text: ${JSON.stringify(data).slice(0, 300)}`
+    );
+  }
+
+  return text;
+}
+
 async function callGroq(prompt) {
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) throw new Error('GROQ_API_KEY not set in environment')
@@ -149,11 +205,26 @@ async function callHuggingFace(prompt) {
   return raw || ''
 }
 
+
 const PROVIDERS = {
-  groq:         { fn: callGroq,        name: 'Groq'         },
-  together:     { fn: callTogether,    name: 'Together AI'  },
-  huggingface:  { fn: callHuggingFace, name: 'HuggingFace'  },
-}
+  gemini: {
+    fn: callGemini,
+    name: 'Google Gemini'
+  },
+  groq: {
+    fn: callGroq,
+    name: 'Groq'
+  },
+  together: {
+    fn: callTogether,
+    name: 'Together AI'
+  },
+  huggingface: {
+    fn: callHuggingFace,
+    name: 'HuggingFace'
+  },
+};
+
 
 function getCallOrder() {
   const primary  = PROVIDERS[AI_PROVIDER] ? AI_PROVIDER : 'groq'

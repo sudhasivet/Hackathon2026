@@ -37,7 +37,7 @@ app.post('/api/generate/metric', async (req, res) => {
 
 app.post("/api/generate/all", async (req, res) => {
   try {
-    const { metricsData = {} } = req.body;
+    const { metricsData = {}, deptId, departmentName, collegeName, aqarYear } = req.body;
     console.log("Incoming request:", req.body);
     if (!metricsData || Object.keys(metricsData).length === 0) {
       return res.json({
@@ -46,7 +46,7 @@ app.post("/api/generate/all", async (req, res) => {
         }
       });
     }
-    const result = await generateAllParagraphs(metricsData);
+    const result = await generateAllParagraphs(metricsData, { deptId, departmentName, collegeName, aqarYear });
     if (!result || typeof result !== "object") {
       return res.json({});
     }

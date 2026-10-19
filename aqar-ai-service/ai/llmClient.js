@@ -34,7 +34,7 @@ async function callGemini(prompt) {
   }
 
   const model =
-    process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+    process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 
   const res = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,

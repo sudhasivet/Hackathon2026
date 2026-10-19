@@ -64,13 +64,15 @@ async function generateParagraph(metricId, rawRows, options = {}, forceRegenerat
   const prompt           = buildPrompt(metricId, facts, options)
 
   // 4. Call external AI API
-  let text
-  try {
-    text = await generateAIContent(prompt)
-  } catch (err) {
-    console.error(`[Generator] AI call failed for ${metricId}:`, err.message)
-    text = generateFallback(metricId, facts, options)
-  }
+  // in generateParagraph, track whether the AI actually succeeded
+let text, usedFallback = false
+try {
+  text = await generateAIContent(prompt)
+} catch (err) {
+  console.error(`[Generator] AI call failed for ${metricId}:`, err.message)
+  text = generateFallback(metricId, facts, options)
+  usedFallback = true
+}
 
   // 5. Validate — retry once if invalid
   const validation = validate(text)
@@ -92,7 +94,7 @@ async function generateParagraph(metricId, rawRows, options = {}, forceRegenerat
     generatedAt: new Date().toISOString(),
   }
 
-  cache.set(cacheKey, { hash, result })
+  if (!usedFallback) cache.set(cacheKey, { hash, result })
   return result
 }
 
@@ -105,9 +107,9 @@ async function generateAllParagraphs(metricsData, options = {}) {
   for (const metricId of metricIds) {
     try {
       console.log(`[Generator] → ${metricId}`)
-      results[metricId] = await generateParagraph(metricId, metricsData[metricId] || [], options)
-      // Small delay to stay within free-tier rate limits
-      await new Promise(r => setTimeout(r, 500))
+      const r = await generateParagraph(metricId, metricsData[metricId] || [], options)
+      results[metricId] = r
+      if (!r.fromCache) await new Promise(res => setTimeout(res, 500))
     } catch (err) {
       console.error(`[Generator] Failed for ${metricId}:`, err.message)
       const facts = extractFacts(metricId, formatMetricData(metricId, metricsData[metricId] || []))
